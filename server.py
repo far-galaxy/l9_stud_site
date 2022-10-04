@@ -4,6 +4,8 @@ from flask import *
 
 app = Flask(__name__)
 
+config = loadJSON("config")
+
 @app.route("/") 
 def index():
 	return send_file("site/index.html")
@@ -14,6 +16,23 @@ def get_media(path):
 		return send_file(f"site/media/{path}")
 	except FileNotFoundError:
 		abort(404)
+		
+@app.route('/bot/vk', methods=['POST'])
+def vkbot():
+	data = json.loads(request.data)
+	if 'type' not in data.keys():
+		return 'not vk'
+	if data['type'] == 'confirmation':
+		return config['vk']['confirm']	
+	elif data['secret'] == config['vk']['key']:
+		if data['type'] == 'message_new':
+			msg = data['object']['message']
+			print(msg['from_id'], msg['text'])		
+	else:
+		print(data)
+		
+	return "ok"
+
 		
 @app.route("/stuff") 
 def stuff():
@@ -31,4 +50,4 @@ def stuff_files(path):
 		abort(404)		
 
 if __name__ == "__main__":
-	app.run(host='0.0.0.0')
+	app.run(host='0.0.0.0', debug=True)
