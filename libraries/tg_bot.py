@@ -20,8 +20,19 @@ class TGbot():
 				messages.append(msg)
 		return messages
 	
-	def sendMessage(self, uid, text):
-		self.bot.send_message(uid, text)
+	def keyboard(self):
+		buttons = [
+			[telegram.KeyboardButton("Ближайшая пара"),
+			 telegram.KeyboardButton("Следующая пара")],
+		[telegram.KeyboardButton("Расписание на сегодня")]
+		]
+		kb = telegram.ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
+		#kb.add(telegram.KeyboardButton("Ближайшая пара"))
+		
+		return kb
+	
+	def sendMessage(self, uid, text, key=None):
+		self.bot.send_message(uid, text, reply_markup=key)
 				
 if __name__ == "__main__":
 	bot = TGbot(open("tg.txt").read())

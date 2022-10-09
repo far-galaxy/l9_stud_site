@@ -146,7 +146,6 @@ class TG_DB():
 		
 	def initUser(self, tgId):
 		result = self.l9lk.db.get(TG_DB.users_table, f"tgId = {tgId}", ["l9Id"])
-		result = result.fetchall()
 		if result == []:
 			l9Id = self.l9lk.initUser({"id":0})
 			user = {
@@ -216,7 +215,7 @@ class Shedule_DB():
 		
 		if groupId != None:
 			lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
-							 f"groupId = {groupId} AND `begin` > '{str_time}' " 
+							 f"groupId = {groupId} AND `end` > '{str_time}' " 
 							 'ORDER BY `begin` LIMIT 2',
 							 ['lessonId','begin'])
 			
@@ -224,7 +223,7 @@ class Shedule_DB():
 				if len(lessonId) < 2:
 					return None, None
 				begin = lessonId[1][1]
-				date = begin.date
+				date = begin
 				return lessonId[1][0], date
 			
 		return None, None
@@ -245,6 +244,35 @@ class Shedule_DB():
 			return [i[0] for i in lessonsId], date
 			
 		return None, None
+	
+	def checkLesson(self, time):
+		time = time.replace(second=0, microsecond=0)
+		str_time = time.isoformat(sep=' ')
+		str_date = time.strftime("%Y-%m-%d")
+		lessons = []
+		prev_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
+										 f"`end` = '{str_time}' " 
+										 f"AND DATE(`end`) = '{str_date}' "
+										 'ORDER BY `begin`',
+										 ['lessonId','groupId'])
+		if prev_lessonIds != []:
+			lessons = [(i[1], self.getLesson(i[0])) for i in prev_lessonIds]
+		
+		first_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
+										 f"DATE(`begin`) = '{str_date}' "
+										 'ORDER BY `begin` LIMIT 1',
+										 ['lessonId','groupId'])
+		first_lessons = []
+		if first_lessonIds != []:
+			for i in first_lessonIds:
+				if i != None:
+					l = self.getLesson(i[0])
+					l["begin"] = l["begin"] - datetime.timedelta(minutes=10)
+					if l["begin"] == time:
+						first_lessons.append((i[1], l))
+					
+		return lessons, first_lessons
+		
 	def getGroup(self, l9Id):
 		groupId = self.l9lk.db.get(L9LK.users_table, f'l9Id = {l9Id}',['groupId'])
 		return groupId[0][0] if groupId != [] else None
@@ -256,21 +284,23 @@ class Shedule_DB():
 			
 		if lesson != []:
 			lesson = lesson[0]
+			
+			teacher = None
+			if lesson[6] != None:	
+				teacher = self.l9lk.db.get(Shedule_DB.teachers_table, f'teacherId = {lesson[6]}')
 				
-			teacher = self.l9lk.db.get(Shedule_DB.teachers_table, f'teacherId = {lesson[6]}')
-				
-			if teacher != []:
+			if teacher != None and teacher != []:
 				info = teacher[0] 
 				teacher = f"{info[2]} {info[1][0]}.{info[3][0]}."
-			else:
-				teacher = "Error"
 				
 			json_lesson = {
 				'type' : icons[lesson[1]],
 				'name' : lesson[2],
 				'place' : lesson[7],
 				'teacher' : teacher,
-				'add_info' : lesson[8]
+				'add_info' : lesson[8],
+				'begin': lesson[4],
+				'end': lesson[5],
 			}
 				
 			return json_lesson
@@ -286,8 +316,8 @@ if __name__ == "__main__":
 	l9lk = L9LK(open("pass.txt").read())
 	sh = Shedule_DB(l9lk)
 	
-	lesson, is_now = sh.getDay(914995387, datetime.datetime(2022, 10, 11, 17, 20))
-	if lesson != None:
-		for l in lesson:
-			print(sh.getLesson(l))
+	print(sh.checkLesson(datetime.datetime(2022, 10, 11, 20, 15)))
+	
+	#lesson, is_now = sh.getDay(914995387, datetime.datetime(2022, 10, 11, 17, 20))
+
 	
