@@ -13,6 +13,7 @@ class TGbot():
 		
 			if update.message:
 				msg = {
+				'platform' : "TG",
 				'uid' : update.message.from_user.id,
 				'text' : update.message.text
 				}

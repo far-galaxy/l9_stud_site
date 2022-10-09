@@ -65,7 +65,7 @@ class Database():
 		    :columns: [optional] :class:`list` columns to return, for all columns leave None
 		"""			
 		query = "SELECT " + (', '.join(columns) if columns != None else "*")
-		query += f" FROM {name} WHERE {condition};"
+		query += f" FROM `{name}` WHERE {condition};"
 		return self.execute(query)
 	
 	def addRow(self, name, row):
@@ -106,10 +106,8 @@ class L9LK():
 		self.db.initDatabase("l9_lk")
 		self.db.initTable(L9LK.users_table, [
 		["l9Id", "INTEGER", "PRIMARY KEY"],
-		["userName", "TEXT"],
-		["userSurname", "TEXT"],
-		["userPhotoUrl", "TEXT"],
-		["sessionToken", "TEXT"],
+		["groupId", "INTEGER"],
+		["FOREIGN KEY", "(groupId)", "REFERENCES", f"`{Shedule_DB.groups_table}`", "(groupId)"]
 		])
 		
 	def initUser(self, data):
@@ -119,10 +117,7 @@ class L9LK():
 		if result == []:
 			l9Id = self.db.newID(L9LK.users_table, "l9Id")
 			user = {
-				"l9Id" : l9Id,
-				"userName" : data['first_name'] if 'first_name' in data else None,
-				"userSurname" : data['last_name'] if 'last_name' in data else None,
-				"userPhotoUrl" : data['photo_big'] if 'photo_big' in data else None
+				"l9Id" : l9Id
 				}
 			self.db.insert(L9LK.users_table, user)
 		else:
@@ -146,13 +141,12 @@ class TG_DB():
 		["tgId", "INTEGER"],
 		["pos_tag", "VARCHAR(11)", "DEFAULT", "'not_started'"],
 		["first_time", "INT", "DEFAULT", "45"],
-		["FOREIGN KEY", "(l9Id)", "REFERENCES", L9LK.users_table, "(l9Id)"]
+		["FOREIGN KEY", "(l9Id)", "REFERENCES", f"`{L9LK.users_table}`", "(l9Id)"]
 		])	
 		
 	def initUser(self, tgId):
 		result = self.l9lk.db.get(TG_DB.users_table, f"tgId = {tgId}", ["l9Id"])
 		result = result.fetchall()
-		print(result)
 		if result == []:
 			l9Id = self.l9lk.initUser({"id":0})
 			user = {
@@ -164,6 +158,25 @@ class TG_DB():
 			l9Id = result[0][0]		
 		
 		return l9Id
+	
+class Shedule_DB():
+	
+	groups_table = "groups"
+
+	def __init__(self, db):	
+		"""Shedule Databse
+
+		Args:
+		    :db: :class:`L9LK` database
+		"""	
+		self.l9lk = db
+		self.l9lk.db.initTable("groups", [
+		["groupId", "INTEGER", "PRIMARY KEY"],
+		["groupNumber", "CHAR(4)"],
+		["specName", "VARCHAR(45)"],
+		])	
+		
+	
 	
 if __name__ == "__main__":
 	l9lk = L9LK(open("pass.txt").read())
