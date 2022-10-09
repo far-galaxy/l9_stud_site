@@ -36,7 +36,6 @@ class Bot():
 					f"{Bot.platforms[platform]} = {uid}", 
 					["pos_tag"])
 		
-		tag = tag.fetchall()
 		tag = tag[0][0]
 		
 		if tag == 'not_started':
@@ -58,7 +57,6 @@ class Bot():
 					f'groupNumber = {text}', 
 					['groupId','specName']				
 				)
-				result = result.fetchall()
 				
 				if result != []:
 					result = result[0]

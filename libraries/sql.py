@@ -1,5 +1,6 @@
 from mysql.connector import connect
 import random
+import datetime
 
 class Database():
 	"""Mini module for mysql connector"""
@@ -36,7 +37,7 @@ class Database():
 		    :name: :class:`str` name of the table
 		    :head: :class:`list` of :class:`list` of column names and attributes
 		"""
-		query = f"CREATE TABLE IF NOT EXISTS {name} ("
+		query = f"CREATE TABLE IF NOT EXISTS `{name}` ("
 		query += ", ".join([" ".join(i) for i in head])
 		query += ");"
 		self.execute(query)
@@ -66,7 +67,7 @@ class Database():
 		"""			
 		query = "SELECT " + (', '.join(columns) if columns != None else "*")
 		query += f" FROM `{name}` WHERE {condition};"
-		return self.execute(query)
+		return self.execute(query).fetchall()
 	
 	def addRow(self, name, row):
 		query = f"ALTER TABLE {name}"
@@ -113,7 +114,6 @@ class L9LK():
 	def initUser(self, data):
 		uid = str(data['id'])
 		result = self.db.get(L9LK.users_table, f"l9Id = {uid}", ["l9Id"])
-		result = result.fetchall()
 		if result == []:
 			l9Id = self.db.newID(L9LK.users_table, "l9Id")
 			user = {
@@ -161,7 +161,9 @@ class TG_DB():
 	
 class Shedule_DB():
 	
-	groups_table = "groups"
+	groups_table = 'groups'
+	teachers_table = 'teachers'
+	lessons_table = 'lessons'
 
 	def __init__(self, db):	
 		"""Shedule Databse
@@ -170,16 +172,122 @@ class Shedule_DB():
 		    :db: :class:`L9LK` database
 		"""	
 		self.l9lk = db
-		self.l9lk.db.initTable("groups", [
+		self.l9lk.db.initTable(Shedule_DB.groups_table, [
 		["groupId", "INTEGER", "PRIMARY KEY"],
 		["groupNumber", "CHAR(4)"],
 		["specName", "VARCHAR(45)"],
 		])	
 		
+		self.l9lk.db.initTable(Shedule_DB.lessons_table, [
+		["lessonId", "INTEGER", "PRIMARY KEY"],
+		["type", "CHAR(5)", "DEFAULT", "'other'"],
+		["name", "TEXT"],
+		["groupId", "INTEGER"],
+		["begin", "DATETIME"],
+		["end", "DATETIME"],
+		["teacherId", "INTEGER"],
+		["place", "TEXT"],
+		["add_info", "TEXT"],
+		["FOREIGN KEY", "(groupId)", "REFERENCES", f"`{Shedule_DB.groups_table}`", "(groupId)"],
+		["FOREIGN KEY", "(teacherId)", "REFERENCES", f"`{Shedule_DB.teachers_table}`", "(teacherId)"]
+		])	
+		
+	def nearLesson(self, l9Id, time):
+		str_time = time.isoformat(sep=' ')
+	
+		groupId = self.getGroup(l9Id)
+		
+		if groupId != None:
+			lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
+							 f"groupId = {groupId} AND `end` > '{str_time}' " 
+							 'ORDER BY `begin` LIMIT 1',
+							 ['lessonId','begin'])
+			
+			if lessonId != []:
+				begin = lessonId[0][1]
+				return lessonId[0][0], begin
+			
+		return None, None
+			
+	def nextLesson(self, l9Id, time):
+		str_time = time.isoformat(sep=' ')
+	
+		groupId = self.getGroup(l9Id)
+		
+		if groupId != None:
+			lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
+							 f"groupId = {groupId} AND `begin` > '{str_time}' " 
+							 'ORDER BY `begin` LIMIT 2',
+							 ['lessonId','begin'])
+			
+			if lessonId != []:
+				if len(lessonId) < 2:
+					return None, None
+				begin = lessonId[1][1]
+				date = begin.date
+				return lessonId[1][0], date
+			
+		return None, None
+	
+	def getDay(self, l9Id, time):
+		str_time = time.isoformat(sep=' ')
+		
+		near_lesson_date = self.nearLesson(l9Id, time)[1]
+		str_nld = near_lesson_date.strftime("%Y-%m-%d")
+		groupId = self.getGroup(l9Id)
+		if groupId != None:
+			lessonsId = self.l9lk.db.get(Shedule_DB.lessons_table, 
+							 f"groupId = {groupId} AND `begin` > '{str_time}' " 
+							 f"AND DATE(`begin`) = '{str_nld}' "
+							 'ORDER BY `begin`',
+							 ['lessonId','begin'])
+			date = lessonsId[0][1]
+			return [i[0] for i in lessonsId], date
+			
+		return None, None
+	def getGroup(self, l9Id):
+		groupId = self.l9lk.db.get(L9LK.users_table, f'l9Id = {l9Id}',['groupId'])
+		return groupId[0][0] if groupId != [] else None
+	
+	def getLesson(self, lessonId):
+		icons = {'other' : '📙', 'lect' : '📗', 'lab' : '📘', 'pract' : '📕'}
+			
+		lesson = self.l9lk.db.get(Shedule_DB.lessons_table, f'lessonId = {lessonId}')
+			
+		if lesson != []:
+			lesson = lesson[0]
+				
+			teacher = self.l9lk.db.get(Shedule_DB.teachers_table, f'teacherId = {lesson[6]}')
+				
+			if teacher != []:
+				info = teacher[0] 
+				teacher = f"{info[2]} {info[1][0]}.{info[3][0]}."
+			else:
+				teacher = "Error"
+				
+			json_lesson = {
+				'type' : icons[lesson[1]],
+				'name' : lesson[2],
+				'place' : lesson[7],
+				'teacher' : teacher,
+				'add_info' : lesson[8]
+			}
+				
+			return json_lesson
+			
+		else:
+			return {'empty'}
+		
+		
+		
 	
 	
 if __name__ == "__main__":
 	l9lk = L9LK(open("pass.txt").read())
-	TG_DB = TG_DB(l9lk)
-	print(TG_DB.initUser("12345689"))
+	sh = Shedule_DB(l9lk)
+	
+	lesson, is_now = sh.getDay(914995387, datetime.datetime(2022, 10, 11, 17, 20))
+	if lesson != None:
+		for l in lesson:
+			print(sh.getLesson(l))
 	
