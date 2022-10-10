@@ -92,7 +92,7 @@ class Database():
 		
 		result = self.get(name, f"{id_name} = {someID}")
 		
-		exist = result.fetchall() != []
+		exist = result != []
 		if not exist:
 			return str(someID)
 		else:
@@ -174,12 +174,13 @@ class Shedule_DB():
 		self.l9lk.db.initTable(Shedule_DB.groups_table, [
 		["groupId", "INTEGER", "PRIMARY KEY"],
 		["groupNumber", "CHAR(4)"],
-		["specName", "VARCHAR(45)"],
+		["specName", "TEXT"],
 		])	
 		
 		self.l9lk.db.initTable(Shedule_DB.lessons_table, [
 		["lessonId", "INTEGER", "PRIMARY KEY"],
 		["type", "CHAR(5)", "DEFAULT", "'other'"],
+		["numInDay", "INTEGER"],
 		["name", "TEXT"],
 		["groupId", "INTEGER"],
 		["begin", "DATETIME"],
@@ -252,11 +253,20 @@ class Shedule_DB():
 		lessons = []
 		prev_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
 										 f"`end` = '{str_time}' " 
-										 f"AND DATE(`end`) = '{str_date}' "
-										 'ORDER BY `begin`',
-										 ['lessonId','groupId'])
+										 f"AND DATE(`end`) = '{str_date}' ",
+										 ['lessonId','groupId','numInDay'])
+		
 		if prev_lessonIds != []:
-			lessons = [(i[1], self.getLesson(i[0])) for i in prev_lessonIds]
+			
+			for i in prev_lessonIds:
+				num = i[2]
+				next_lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
+													 f"`numInDay` = '{num+1}' " 
+													 f"AND DATE(`end`) = '{str_date}' ",
+													 ['lessonId'])
+				if next_lessonId != []:
+					lessons.append((i[1], self.getLesson(next_lessonId[0][0])))
+				
 		
 		first_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
 										 f"DATE(`begin`) = '{str_date}' "
@@ -272,6 +282,24 @@ class Shedule_DB():
 						first_lessons.append((i[1], l))
 					
 		return lessons, first_lessons
+	
+	def lastLesson(self, time):
+		time = time.replace(second=0, microsecond=0)
+		str_time = time.isoformat(sep=' ')
+		str_date = time.strftime("%Y-%m-%d")
+		lessons = []
+		last_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
+											 f"DATE(`end`) = '{str_date}' "
+											 'ORDER BY `begin` DESC LIMIT 1',
+											 ['lessonId','groupId'])
+		if last_lessonIds != []:
+			for i in last_lessonIds:
+				if i != None:
+					l = self.getLesson(i[0])
+					if l["end"] == time:
+						lessons.append((i[1], l))
+	
+		return lessons		
 		
 	def getGroup(self, l9Id):
 		groupId = self.l9lk.db.get(L9LK.users_table, f'l9Id = {l9Id}',['groupId'])
@@ -286,21 +314,21 @@ class Shedule_DB():
 			lesson = lesson[0]
 			
 			teacher = None
-			if lesson[6] != None:	
-				teacher = self.l9lk.db.get(Shedule_DB.teachers_table, f'teacherId = {lesson[6]}')
+			if lesson[7] != None:	
+				teacher = self.l9lk.db.get(Shedule_DB.teachers_table, f'teacherId = {lesson[7]}')
 				
 			if teacher != None and teacher != []:
 				info = teacher[0] 
 				teacher = f"{info[2]} {info[1][0]}.{info[3][0]}."
 				
 			json_lesson = {
-				'type' : icons[lesson[1]],
-				'name' : lesson[2],
-				'place' : lesson[7],
+				'type' : icons[lesson[2]],
+				'name' : lesson[3],
+				'place' : lesson[8],
 				'teacher' : teacher,
-				'add_info' : lesson[8],
-				'begin': lesson[4],
-				'end': lesson[5],
+				'add_info' : lesson[9],
+				'begin': lesson[5],
+				'end': lesson[6],
 			}
 				
 			return json_lesson

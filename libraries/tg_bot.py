@@ -15,7 +15,8 @@ class TGbot():
 				msg = {
 				'platform' : "TG",
 				'uid' : update.message.from_user.id,
-				'text' : update.message.text
+				'text' : update.message.text,
+				'name' : f'{update.message.from_user.first_name} {update.message.from_user.last_name}'
 				}
 				messages.append(msg)
 		return messages

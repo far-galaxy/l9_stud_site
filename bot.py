@@ -137,7 +137,6 @@ class Bot():
 	
 	def dayShedule(self, l9Id):
 		now = datetime.datetime.now()
-		now = datetime.datetime(2022,10,20)
 		lessonIds, date = self.shedule.getDay(l9Id, now)
 		
 		if now.date() < date.date():
@@ -162,9 +161,9 @@ class Bot():
 		begin = lesson['begin']
 		end = lesson['end']
 		text = ("📆 %02i:%02i - %02i:%02i\n" % (begin.hour, begin.minute, end.hour, end.minute))
-		add_info = "" if lesson['add_info'] == None else lesson['add_info']
-		teacher = "" if lesson['teacher'] == None else "👤 "+lesson['teacher']
-		text += f"{lesson['type']} {lesson['name']}\n🧭 {lesson['place']}\n{teacher}\n{add_info}"
+		add_info = "" if lesson['add_info'] == None else "\n"+lesson['add_info']
+		teacher = "" if lesson['teacher'] == None else "\n👤 "+lesson['teacher']
+		text += f"{lesson['type']} {lesson['name']}\n🧭 {lesson['place']}{teacher}{add_info}"
 		return text
 				
 	def changeTag(self, uid, tag, platform = "TG"):
@@ -177,6 +176,7 @@ class Bot():
 		
 	def checkLesson(self, time):
 		lessons, first_lessons = self.shedule.checkLesson(time)
+		last_lessons = self.shedule.lastLesson(time)
 		
 		mailing = {}
 		
@@ -188,7 +188,11 @@ class Bot():
 		for groupId, lesson in first_lessons:
 			text = "❗️ Первая пара: \n\n"
 			text += self.strLesson(lesson)
-			mailing[groupId] = text		
+			mailing[groupId] = text
+			
+		for groupId, lesson in last_lessons:
+			text = "❗️ Сегодня пар больше нет"	
+			mailing[groupId] = text
 			
 		return mailing
 			
@@ -222,6 +226,7 @@ if __name__ == "__main__":
 	while True:
 		msgs = tg_bot.checkMessages()
 		for msg in msgs:
+			print(msg)
 			answer = bot.checkMessage(msg)
 			for i in answer:
 				tg_bot.sendMessage(msg['uid'], i, tg_bot.keyboard())	
@@ -229,9 +234,9 @@ if __name__ == "__main__":
 		now = datetime.datetime.now()		
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
-			print(timer.isoformat())
 			print("check "+now.isoformat())
-			mail = bot.checkLesson(datetime.datetime(2022,10,10,7,50))
+			#timer = datetime.datetime(2022,10,11,21,55)
+			mail = bot.checkLesson(timer)
 			
 			for groupId, msg in mail.items():
 				bot.groupMailing(tg_bot, groupId, msg)			
