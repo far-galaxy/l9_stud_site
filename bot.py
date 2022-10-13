@@ -83,7 +83,7 @@ class Bot():
 						return ["Введи время в минутах, за которое тебе нужно сообщать о начале первой пары (от 20 до 240)"]
 					else:
 						return [self.changeFirstTime(l9Id, arg)]
-				
+
 			return ['Aй!']
 		# Commands
 		elif tag == 'first_time':
@@ -252,6 +252,34 @@ class Bot():
 							['tgId'])
 				if tg_id != []:
 					bot.sendMessage(tg_id[0][0], msg, tg_bot.keyboard())
+					
+	def firstMailing(self, bot, time):
+		self.shedule.firstTimeCheck(time)
+		str_time = time.isoformat(sep=' ')
+		
+		mail = self.l9lk.db.execute(f"""
+							SELECT tgId, lessonId, u.first_time FROM first_mail AS fm 
+							JOIN l9_users AS u ON fm.l9Id = u.l9Id
+							JOIN tg_bot AS t ON t.l9Id = fm.l9Id
+							WHERE fm.mailTime = '{str_time}';""").fetchall();
+		if time.hour < 11:
+			head = "Доброе утро 🌅\n"
+		elif time.hour >= 11 and time.hour < 16:
+			head = "Добрый день ☀️\n"
+		else:
+			head = "Добрый вечер 🌃\n"
+		if mail != []:
+			for user in mail:
+				mn = user[2] % 10
+				end = ""
+				if mn == 1:
+					end = "у"
+				elif mn > 1 and mn < 5:
+					end = "ы"
+				text = f"{head}Через {user[2]} минут{end} начнутся занятия\n\nПервая пара:\n"
+				text += self.strLesson(self.shedule.getLesson(user[1]))
+				bot.sendMessage(user[0], text, tg_bot.keyboard())
+				
 	
 if __name__ == "__main__":
 	initLogger(logger)
@@ -294,9 +322,10 @@ if __name__ == "__main__":
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
 			logger.debug("check "+now.isoformat())
-			#timer = datetime.datetime(2022,10,11,21,55)
-			mail = bot.checkLesson(timer)
+			#timer = datetime.datetime(2022,10,20,18,00)
+			bot.firstMailing(tg_bot, timer)
 			
+			mail = bot.checkLesson(timer)
 			for groupId, msg in mail.items():
 				bot.groupMailing(tg_bot, groupId, msg)			
 

@@ -363,6 +363,22 @@ class Shedule_DB():
 		groupId = self.l9lk.db.get(Shedule_DB.gu_table, f'l9Id = {l9Id}',['groupId'])
 		return groupId[0][0] if groupId != [] else None
 	
+	def firstTimeCheck(self, time):
+		str_time = time.isoformat(sep=' ')
+		str_data = time.strftime("%Y-%m-%d")
+		
+		query = f"DELETE FROM first_mail WHERE mailTime < '{str_time}';"
+		
+		self.l9lk.db.execute(query, commit=True)
+		
+		query = f"""
+		INSERT IGNORE INTO first_mail (l9Id, lessonId, mailTime) 
+		SELECT u.l9Id, l.lessonId, DATE_SUB(l.begin, INTERVAL u.first_time MINUTE) as `time` FROM groups_users AS g 
+		JOIN l9_users AS u ON u.l9Id = g.l9Id
+		JOIN lessons AS l ON l.groupId = g.groupId WHERE DATE(l.begin) = '{str_data}' AND l.numInDay = 1 ORDER BY l.begin;"""
+		
+		self.l9lk.db.execute(query, commit=True)
+	
 	def getLesson(self, lessonId):
 		icons = {'other' : '📙', 'lect' : '📗', 'lab' : '📘', 'pract' : '📕'}
 			
@@ -402,7 +418,8 @@ if __name__ == "__main__":
 	l9lk = L9LK(open("pass.txt").read())
 	sh = Shedule_DB(l9lk)
 	
-	print(sh.checkLesson(datetime.datetime(2022, 10, 11, 20, 15)))
+	
+	print(sh.firstTimeCheck(datetime.datetime(2022, 10, 14, 20, 15)))
 	
 	#lesson, is_now = sh.getDay(914995387, datetime.datetime(2022, 10, 11, 17, 20))
 
