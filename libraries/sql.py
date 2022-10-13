@@ -104,12 +104,17 @@ class L9LK():
 	
 	def __init__(self, sql_pass):
 		self.db = Database("localhost", "root", sql_pass)
-		self.db.initDatabase("l9_lk")
-		self.db.initTable(L9LK.users_table, [
-		["l9Id", "INTEGER", "PRIMARY KEY"],
-		["groupId", "INTEGER"],
-		["FOREIGN KEY", "(groupId)", "REFERENCES", f"`{Shedule_DB.groups_table}`", "(groupId)"]
-		])
+		self.db.initDatabase("l9_lk_test")
+		
+		self.db.execute(f"""
+		CREATE TABLE IF NOT EXISTS `{L9LK.users_table}` (
+		`l9Id` int NOT NULL,
+		`first_time` int NOT NULL DEFAULT '45',
+		PRIMARY KEY (`l9Id`)
+		)
+		""",
+		commit=True)		
+
 		
 	def initUser(self, data):
 		uid = str(data['id'])
@@ -136,21 +141,25 @@ class TG_DB():
 		    :db: :class:`L9LK` database
 		"""	
 		self.l9lk = db
-		self.l9lk.db.initTable(TG_DB.users_table, [
-		["l9Id", "INTEGER", "PRIMARY KEY"],
-		["tgId", "INTEGER"],
-		["pos_tag", "VARCHAR(11)", "DEFAULT", "'not_started'"],
-		["first_time", "INT", "DEFAULT", "45"],
-		["FOREIGN KEY", "(l9Id)", "REFERENCES", f"`{L9LK.users_table}`", "(l9Id)"]
-		])	
+		self.l9lk.db.execute(f"""
+							 CREATE TABLE IF NOT EXISTS `{TG_DB.users_table}` (
+							 `l9Id` int NOT NULL,
+							 `tgId` bigint NOT NULL,
+							 `pos_tag` varchar(11) DEFAULT 'not_started',
+							 `name` TEXT,
+							 PRIMARY KEY (`l9Id`),
+							 CONSTRAINT `l9_tg` FOREIGN KEY (`l9Id`) REFERENCES `{L9LK.users_table}` (`l9Id`) ON DELETE CASCADE ON UPDATE CASCADE
+							 )""",
+							 commit=True)	
 		
-	def initUser(self, tgId):
+	def initUser(self, tgId, name):
 		result = self.l9lk.db.get(TG_DB.users_table, f"tgId = {tgId}", ["l9Id"])
 		if result == []:
 			l9Id = self.l9lk.initUser({"id":0})
 			user = {
 					"l9Id" : l9Id,
-					"tgId" : tgId
+					"tgId" : tgId,
+					"name" : name
 				}
 			self.l9lk.db.insert(TG_DB.users_table, user)
 		else:
@@ -163,6 +172,8 @@ class Shedule_DB():
 	groups_table = 'groups'
 	teachers_table = 'teachers'
 	lessons_table = 'lessons'
+	fm_table = 'first_mail'
+	gu_table = 'groups_users'
 
 	def __init__(self, db):	
 		"""Shedule Databse
@@ -171,26 +182,72 @@ class Shedule_DB():
 		    :db: :class:`L9LK` database
 		"""	
 		self.l9lk = db
-		self.l9lk.db.initTable(Shedule_DB.groups_table, [
-		["groupId", "INTEGER", "PRIMARY KEY"],
-		["groupNumber", "CHAR(4)"],
-		["specName", "TEXT"],
-		])	
 		
-		self.l9lk.db.initTable(Shedule_DB.lessons_table, [
-		["lessonId", "INTEGER", "PRIMARY KEY"],
-		["type", "CHAR(5)", "DEFAULT", "'other'"],
-		["numInDay", "INTEGER"],
-		["name", "TEXT"],
-		["groupId", "INTEGER"],
-		["begin", "DATETIME"],
-		["end", "DATETIME"],
-		["teacherId", "INTEGER"],
-		["place", "TEXT"],
-		["add_info", "TEXT"],
-		["FOREIGN KEY", "(groupId)", "REFERENCES", f"`{Shedule_DB.groups_table}`", "(groupId)"],
-		["FOREIGN KEY", "(teacherId)", "REFERENCES", f"`{Shedule_DB.teachers_table}`", "(teacherId)"]
-		])	
+		self.l9lk.db.execute(f"""
+		CREATE TABLE IF NOT EXISTS `{Shedule_DB.groups_table}` (
+		`groupId` bigint NOT NULL,
+		`groupNumber` char(4) DEFAULT '0000',
+		`specName` text,
+		PRIMARY KEY (`groupId`)
+		)""",
+		commit=True)
+		
+		self.l9lk.db.execute(f"""
+		CREATE TABLE IF NOT EXISTS `{Shedule_DB.gu_table}` (
+		`guId` int NOT NULL AUTO_INCREMENT,
+		`l9Id` int NOT NULL,
+		`groupId` bigint NOT NULL,
+		PRIMARY KEY (`guId`),
+		KEY `guid_idx` (`l9Id`),
+		KEY `gid_idx` (`groupId`),
+		CONSTRAINT `gr_gu` FOREIGN KEY (`groupId`) REFERENCES `{Shedule_DB.groups_table}` (`groupId`) ON DELETE CASCADE ON UPDATE CASCADE,
+		CONSTRAINT `l9_gu` FOREIGN KEY (`l9Id`) REFERENCES `{L9LK.users_table}` (`l9Id`) ON DELETE CASCADE ON UPDATE CASCADE
+		)""",
+		commit=True)			
+		
+		self.l9lk.db.execute(f"""
+		CREATE TABLE IF NOT EXISTS `{Shedule_DB.teachers_table}` (
+		`teacherId` int NOT NULL,
+		`name` varchar(45) DEFAULT 'Иван',
+		`surname` varchar(45) DEFAULT 'Иванов',
+		`midame` varchar(45) DEFAULT 'Иванович',
+		PRIMARY KEY (`teacherId`)
+		)""",
+		commit=True)		
+		
+		self.l9lk.db.execute(f"""
+		CREATE TABLE IF NOT EXISTS `{Shedule_DB.lessons_table}` (
+		`lessonId` int NOT NULL AUTO_INCREMENT,
+		`numInDay` int DEFAULT '1',
+		`type` char(5) DEFAULT 'other',
+		`name` text,
+		`groupId` bigint NOT NULL,
+		`begin` datetime NOT NULL,
+		`end` datetime NOT NULL,
+		`teacherId` int DEFAULT NULL,
+		`place` text,
+		`add_info` text,
+		PRIMARY KEY (`lessonId`),
+		KEY `gr_l_idx` (`groupId`),
+		KEY `teach_l_idx` (`teacherId`),
+		CONSTRAINT `gr_l` FOREIGN KEY (`groupId`) REFERENCES `{Shedule_DB.groups_table}` (`groupId`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+		CONSTRAINT `teach_l` FOREIGN KEY (`teacherId`) REFERENCES `{Shedule_DB.teachers_table}` (`teacherId`) ON DELETE SET NULL ON UPDATE CASCADE
+		)""",
+		commit=True)
+		
+		self.l9lk.db.execute(f"""
+		CREATE TABLE IF NOT EXISTS `first_mail` (
+		`mailId` int NOT NULL AUTO_INCREMENT,
+		`l9Id` int NOT NULL,
+		`lessonId` int NOT NULL,
+		`mailTime` datetime NOT NULL,
+		PRIMARY KEY (`mailId`),
+		KEY `l9_fm_idx` (`l9Id`),
+		KEY `lesson_fm_idx` (`lessonId`),
+		CONSTRAINT `l9_fm` FOREIGN KEY (`l9Id`) REFERENCES `{L9LK.users_table}` (`l9Id`),
+		CONSTRAINT `lesson_fm` FOREIGN KEY (`lessonId`) REFERENCES `lessons` (`lessonId`) ON DELETE CASCADE ON UPDATE CASCADE
+		)""",
+		commit=True)				
 		
 	def nearLesson(self, l9Id, time):
 		str_time = time.isoformat(sep=' ')
@@ -233,16 +290,17 @@ class Shedule_DB():
 		str_time = time.isoformat(sep=' ')
 		
 		near_lesson_date = self.nearLesson(l9Id, time)[1]
-		str_nld = near_lesson_date.strftime("%Y-%m-%d")
-		groupId = self.getGroup(l9Id)
-		if groupId != None:
-			lessonsId = self.l9lk.db.get(Shedule_DB.lessons_table, 
-							 f"groupId = {groupId} AND `begin` > '{str_time}' " 
-							 f"AND DATE(`begin`) = '{str_nld}' "
-							 'ORDER BY `begin`',
-							 ['lessonId','begin'])
-			date = lessonsId[0][1]
-			return [i[0] for i in lessonsId], date
+		if near_lesson_date != None:
+			str_nld = near_lesson_date.strftime("%Y-%m-%d")
+			groupId = self.getGroup(l9Id)
+			if groupId != None:
+				lessonsId = self.l9lk.db.get(Shedule_DB.lessons_table, 
+								 f"groupId = {groupId} AND `begin` > '{str_time}' " 
+								 f"AND DATE(`begin`) = '{str_nld}' "
+								 'ORDER BY `begin`',
+								 ['lessonId','begin'])
+				date = lessonsId[0][1]
+				return [i[0] for i in lessonsId], date
 			
 		return None, None
 	
@@ -302,7 +360,7 @@ class Shedule_DB():
 		return lessons		
 		
 	def getGroup(self, l9Id):
-		groupId = self.l9lk.db.get(L9LK.users_table, f'l9Id = {l9Id}',['groupId'])
+		groupId = self.l9lk.db.get(Shedule_DB.gu_table, f'l9Id = {l9Id}',['groupId'])
 		return groupId[0][0] if groupId != [] else None
 	
 	def getLesson(self, lessonId):

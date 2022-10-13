@@ -2,17 +2,14 @@ from libraries.sql import *
 from libraries.utils import *
 import datetime
 import re
+from time import sleep
+
+import logging
+logger = logging.getLogger(__name__)
+
 
 month = ("января", "февраля", "марта", "апреля", "мая", "июня", 
 		 "июля", "августа", "сентября", "октября", "ноября", "декабря")
-
-class User():
-	def __init__(self, l9Id):
-		self.l9Id = l9Id
-		self.timestamp = datetime.now()
-		
-	def isStart():
-		pass
 
 class Bot():
 	
@@ -30,10 +27,11 @@ class Bot():
 		platform = msg['platform']
 		uid = msg['uid']
 		text = msg['text']
+		name = msg['name']
 		
 		if uid not in self.users_id[platform]:
 			if platform == 'TG':
-				l9Id = tg_db.initUser(uid)
+				l9Id = tg_db.initUser(uid, name)
 				self.users_id[platform][uid] = l9Id
 		else:
 			l9Id = self.users_id[platform][uid]
@@ -66,13 +64,14 @@ class Bot():
 				
 				if result != []:
 					result = result[0]
+					self.l9lk.db.insert(
+						Shedule_DB.gu_table,
+						{'l9Id' : l9Id,
+						 'groupId' : result[0]}
+					)	
 					self.changeTag(uid, 'ready', platform)
-					self.l9lk.db.update(
-						L9LK.users_table,
-						f"l9Id = {l9Id}",
-						f"groupId = '{result[0]}'"
-					)						
-					return [f'Поздравляем, твоя группа {text}, направление "{result[1]}", уже есть в моей базе!']
+					return [f'Поздравляем, твоя группа {text}, направление "{result[1]}", уже есть в моей базе!',
+							'❗️ Внимание! Бот работает в тестовом режиме, поэтому возможны сбои в работе\nЕсли бот не отвечает на запросы, не пишите ему больше ничего: автор заметит и как можно скорее исправит ошибку, и бот обязательно вам ответит :)']
 				else:
 					return ['К сожалению, такой группы в моей базе ещё нет :(']
 				
@@ -139,16 +138,16 @@ class Bot():
 		now = datetime.datetime.now()
 		lessonIds, date = self.shedule.getDay(l9Id, now)
 		
-		if now.date() < date.date():
-			text = '❗️ Сегодня пар нет\nБлижайшие занятия '
-			if date.date() - now.date() == datetime.timedelta(days=1):
-				text += 'завтра:\n\n'
-			else:
-				text +=  f'{date.day} {month[date.month-1]}:\n\n'			
-		elif now.date() == date.date():
-			text = '🗓 Расписание на сегодня:\n\n'
-		
 		if lessonIds != None:
+			if now.date() < date.date():
+				text = '❗️ Сегодня пар нет\nБлижайшие занятия '
+				if date.date() - now.date() == datetime.timedelta(days=1):
+					text += 'завтра:\n\n'
+				else:
+					text +=  f'{date.day} {month[date.month-1]}:\n\n'			
+			elif now.date() == date.date():
+				text = '🗓 Расписание на сегодня:\n\n'
+				
 			for lid in lessonIds:
 				lesson = self.shedule.getLesson(lid)
 				text += self.strLesson(lesson) + "\n\n"
@@ -209,6 +208,9 @@ class Bot():
 					bot.sendMessage(tg_id[0][0], msg, tg_bot.keyboard())
 	
 if __name__ == "__main__":
+	initLogger(logger)
+	logger.info("Restart bot")
+	
 	config = loadJSON("config")
 	l9lk = L9LK(config['sql'])
 	tg_db = TG_DB(l9lk)
@@ -221,20 +223,29 @@ if __name__ == "__main__":
 	
 	timer = datetime.datetime(2022,1,1)
 	
-	print("Bot ready!")
+	logger.info("Bot ready!")
 	
 	while True:
 		msgs = tg_bot.checkMessages()
 		for msg in msgs:
-			print(msg)
+			logger.info(msg.values())
 			answer = bot.checkMessage(msg)
-			for i in answer:
-				tg_bot.sendMessage(msg['uid'], i, tg_bot.keyboard())	
+			if isinstance(answer, list): 
+				for i in answer:
+					tg_bot.sendMessage(msg['uid'], i, tg_bot.keyboard())	
+					
+			elif isinstance(answer, Exception): 
+				logger.error(answer, exc_info=True)
+			else:
+				if answer == "Flood Stop":
+					sleep(5)
+				else:
+					logger.warning(answer)
 		
 		now = datetime.datetime.now()		
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
-			print("check "+now.isoformat())
+			logger.debug("check "+now.isoformat())
 			#timer = datetime.datetime(2022,10,11,21,55)
 			mail = bot.checkLesson(timer)
 			

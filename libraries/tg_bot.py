@@ -1,4 +1,5 @@
 import telegram
+from telegram.error import *
 			
 class TGbot():
 	def __init__(self, token):
@@ -8,17 +9,27 @@ class TGbot():
 		
 	def checkMessages(self):
 		messages = []
-		for update in self.bot.get_updates(offset=self.udpate_id, timeout=10):
-			self.udpate_id = update.update_id + 1
-		
-			if update.message:
-				msg = {
-				'platform' : "TG",
-				'uid' : update.message.from_user.id,
-				'text' : update.message.text,
-				'name' : f'{update.message.from_user.first_name} {update.message.from_user.last_name}'
-				}
-				messages.append(msg)
+		try:
+			for update in self.bot.get_updates(offset=self.udpate_id, timeout=10):
+				self.udpate_id = update.update_id + 1
+			
+				if update.message:
+					msg = {
+					'platform' : "TG",
+					'uid' : update.message.from_user.id,
+					'text' : update.message.text,
+					'name' : f'{update.message.from_user.first_name} {update.message.from_user.last_name}'
+					}
+					messages.append(msg)
+		except TimedOut:
+			return "Timed Out"
+		except NetworkError:
+			return "Network Error"
+		except RetryAfter:
+			return "Flood Stop"
+		except Exception as e:
+			return e
+					
 		return messages
 	
 	def keyboard(self):
