@@ -29,18 +29,7 @@ class Bot():
 		text = msg['text']
 		name = msg['name']
 		
-		if uid not in self.users_id[platform]:
-			if platform == 'TG':
-				l9Id = tg_db.initUser(uid, name)
-				self.users_id[platform][uid] = l9Id
-		else:
-			l9Id = self.users_id[platform][uid]
-		
-		tag = self.l9lk.db.get(TG_DB.users_table, 
-					f"{Bot.platforms[platform]} = {uid}", 
-					["pos_tag"])
-		
-		tag = tag[0][0]
+		tag, l9Id = self.getTag(msg)
 		
 		if tag == 'not_started':
 			if text != '/start':
@@ -81,10 +70,67 @@ class Bot():
 			elif text == 'Следующая пара':
 				return[self.nextLesson(l9Id)]
 			elif text == 'Расписание на сегодня':
-				return[self.dayShedule(l9Id)]			
+				return[self.dayShedule(l9Id)]
+			elif text[0] == '/':
+				text = text.split()
+				cmd = text[0]
+				arg = text[1] if len(text) > 1 else None
+				if cmd == '/help':
+					return [open('libraries/help', encoding='utf-8').read()]
+				if cmd == '/first_time':
+					if arg == None:
+						self.changeTag(uid, 'first_time', platform)
+						return ["Введи время в минутах, за которое тебе нужно сообщать о начале первой пары (от 20 до 240)"]
+					else:
+						return [self.changeFirstTime(l9Id, arg)]
+				
 			return ['Aй!']
+		# Commands
+		elif tag == 'first_time':
+			ans = self.changeFirstTime(l9Id, text)
+			if ans.find("!") != -1:
+				self.changeTag(uid, 'ready', platform)
+			return [ans]
+		
+		
 		else:
 			return ['Ой!']
+		
+	def getTag(self, msg):
+		platform = msg['platform']
+		uid = msg['uid']
+		text = msg['text']
+		name = msg['name']
+		
+		if uid not in self.users_id[platform]:
+			if platform == 'TG':
+				l9Id = tg_db.initUser(uid, name)
+				self.users_id[platform][uid] = l9Id
+		else:
+			l9Id = self.users_id[platform][uid]
+	
+		tag = self.l9lk.db.get(TG_DB.users_table, 
+							   f"{Bot.platforms[platform]} = {uid}", 
+							   ["pos_tag"])
+	
+		return tag[0][0], l9Id
+	
+	def changeFirstTime(self, l9Id, time):
+		try:
+			time = int(time)
+			if time > 240:
+				return "Ой, а не слишком ли заранее тебе надо напоминать о парах?)\nНапиши другое время, пожалуйста"
+			elif time < 20:
+				return "Мне кажется, что я тебе буду слишком поздно напоминать о начале пар, ты просто не успеешь собраться и добежать до универа (ну или проснуться и подключится онлайн)\nНапиши другое время, пожалуйста"	
+			else:
+				self.l9lk.db.update(
+					L9LK.users_table,
+					f"l9Id = {l9Id}",
+					f"first_time = {time}"
+				)	
+				return "Время установлено!"
+		except ValueError:
+			return "Ой, это не похоже на число ):\nНапоминаю, что тебе нужно ввести время сообщения о начале пар"
 		
 	def nearLesson(self, l9Id):
 		now = datetime.datetime.now()
@@ -168,7 +214,7 @@ class Bot():
 	def changeTag(self, uid, tag, platform = "TG"):
 		table = TG_DB.users_table if platform == "TG" else ""
 		self.l9lk.db.update(
-			TG_DB.users_table,
+			table,
 			f"{Bot.platforms[platform]} = {uid}",
 			f"pos_tag = '{tag}'"
 			)	
@@ -230,9 +276,11 @@ if __name__ == "__main__":
 		for msg in msgs:
 			logger.info(msg.values())
 			answer = bot.checkMessage(msg)
+			tag, _ = bot.getTag(msg)
+			key = tg_bot.keyboard() if tag == 'ready' else None
 			if isinstance(answer, list): 
 				for i in answer:
-					tg_bot.sendMessage(msg['uid'], i, tg_bot.keyboard())	
+					tg_bot.sendMessage(msg['uid'], i, key)	
 					
 			elif isinstance(answer, Exception): 
 				logger.error(answer, exc_info=True)
