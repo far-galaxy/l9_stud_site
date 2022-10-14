@@ -4,3 +4,4 @@ __pycache__
 stuff
 libraries/*.txt
 logs
+*.csv

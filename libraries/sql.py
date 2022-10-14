@@ -210,7 +210,7 @@ class Shedule_DB():
 		`teacherId` int NOT NULL,
 		`name` varchar(45) DEFAULT 'Иван',
 		`surname` varchar(45) DEFAULT 'Иванов',
-		`midame` varchar(45) DEFAULT 'Иванович',
+		`midname` varchar(45) DEFAULT 'Иванович',
 		PRIMARY KEY (`teacherId`)
 		)""",
 		commit=True)		
@@ -378,6 +378,22 @@ class Shedule_DB():
 		JOIN lessons AS l ON l.groupId = g.groupId WHERE DATE(l.begin) = '{str_data}' AND l.numInDay = 1 ORDER BY l.begin;"""
 		
 		self.l9lk.db.execute(query, commit=True)
+		
+	def checkNextDay(self, time):
+		str_time = time.strftime("%Y-%m-%d")
+		
+		groups = self.l9lk.db.execute(f"""
+		SELECT groupId FROM lessons 
+		WHERE DATE(DATE_SUB(begin, INTERVAL 1 DAY)) = '{str_time}' AND numInDay = 1;""").fetchall()
+		
+		mail = []
+		for gr in groups:
+			lessonIds = self.l9lk.db.execute(f"""
+			SELECT lessonId FROM lessons 
+			WHERE DATE(DATE_SUB(begin, INTERVAL 1 DAY)) = '{str_time}' AND groupId = {gr[0]}""").fetchall()		
+			mail.append([gr[0], lessonIds])
+		return mail
+					
 	
 	def getLesson(self, lessonId):
 		icons = {'other' : '📙', 'lect' : '📗', 'lab' : '📘', 'pract' : '📕'}

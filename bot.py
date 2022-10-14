@@ -74,7 +74,7 @@ class Bot():
 			elif text[0] == '/':
 				text = text.split()
 				cmd = text[0]
-				arg = text[1] if len(text) > 1 else None
+				arg = text[1:] if len(text) > 1 else None
 				if cmd == '/help':
 					return [open('libraries/help', encoding='utf-8').read()]
 				if cmd == '/first_time':
@@ -82,7 +82,11 @@ class Bot():
 						self.changeTag(uid, 'first_time', platform)
 						return ["Введи время в минутах, за которое тебе нужно сообщать о начале первой пары (от 20 до 240)"]
 					else:
-						return [self.changeFirstTime(l9Id, arg)]
+						return [self.changeFirstTime(l9Id, arg[0])]
+				if str(uid) == config["tg"]["admin"]:
+					if cmd == "/mail":
+						self.groupMailing(tg_bot, arg[0], " ".join(arg[1:]))
+						return["Сообщения отправлены"]
 
 			return ['Aй!']
 		# Commands
@@ -91,7 +95,6 @@ class Bot():
 			if ans.find("!") != -1:
 				self.changeTag(uid, 'ready', platform)
 			return [ans]
-		
 		
 		else:
 			return ['Ой!']
@@ -242,7 +245,7 @@ class Bot():
 		return mailing
 			
 	def groupMailing(self, bot, groupId, msg):
-		group = self.l9lk.db.get(L9LK.users_table, 
+		group = self.l9lk.db.get(Shedule_DB.gu_table, 
 							f'groupId = {groupId}', 
 							['l9Id'])	
 		if group != []:
@@ -279,6 +282,17 @@ class Bot():
 				text = f"{head}Через {user[2]} минут{end} начнутся занятия\n\nПервая пара:\n"
 				text += self.strLesson(self.shedule.getLesson(user[1]))
 				bot.sendMessage(user[0], text, tg_bot.keyboard())
+				
+	def nextDay(self, bot, time):
+		lessons = self.shedule.checkNextDay(time)
+		
+		if lessons != []:
+			for group, day in lessons:
+				text = "❗️ Внимание!\nЗавтра будут занятия:\n\n"
+				for lid in day:
+					lesson = self.shedule.getLesson(lid[0])
+					text += self.strLesson(lesson) + "\n\n"
+				self.groupMailing(bot, group, text)
 				
 	
 if __name__ == "__main__":
@@ -318,7 +332,7 @@ if __name__ == "__main__":
 				else:
 					logger.warning(answer)
 		
-		now = datetime.datetime.now()		
+		now = datetime.datetime.now()	
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
 			logger.debug("check "+now.isoformat())
@@ -327,5 +341,8 @@ if __name__ == "__main__":
 			
 			mail = bot.checkLesson(timer)
 			for groupId, msg in mail.items():
-				bot.groupMailing(tg_bot, groupId, msg)			
+				bot.groupMailing(tg_bot, groupId, msg)
+				
+			if timer.hour == 19 and timer.minute == 00:
+				bot.nextDay(tg_bot, now)
 
