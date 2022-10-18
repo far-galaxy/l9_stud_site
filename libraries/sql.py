@@ -49,7 +49,7 @@ class Database():
 		    :name: :class:`str` name of the table
 		    :values: :class:`dict` columns name and its values
 		"""		
-		query = f"INSERT IGNORE INTO {name} ("
+		query = f"INSERT IGNORE INTO `{name}` ("
 		query += ", ".join(values) + ") VALUES ("
 		query += ", ".join([f'"{i}"' if (i != None) else "NULL" 
 							for i in values.values()]) + ");"
