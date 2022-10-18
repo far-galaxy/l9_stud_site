@@ -258,33 +258,38 @@ class Shedule_DB():
 			second_gr = f' OR groupId = {groupId[1][0]}' if len(groupId) == 2 else ""
 			lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
 							 f"(groupId = {groupId[0][0]}{second_gr}) AND `end` > '{str_time}' " 
-							 'ORDER BY `begin` LIMIT 1',
-							 ['lessonId','begin'])
+							 'ORDER BY `begin` LIMIT 2',
+							 ['lessonId','begin','numInDay'])
 			
 			if lessonId != []:
 				begin = lessonId[0][1]
-				return lessonId[0][0], begin
+				if len(lessonId) == 2 and lessonId[0][2] == lessonId[1][2]:
+					return [lessonId[0][0], lessonId[1][0]], begin				
+				return [lessonId[0][0]], begin
 			
 		return None, None
 			
 	def nextLesson(self, l9Id, time):
 		str_time = time.isoformat(sep=' ')
+		str_date = time.strftime("%Y-%m-%d")
 	
 		groupId = self.getGroup(l9Id)
 		
 		if groupId != None:
 			second_gr = f' OR groupId = {groupId[1][0]}' if len(groupId) == 2 else ""
 			lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
-							 f"(groupId = {groupId[0][0]}{second_gr}) AND `end` > '{str_time}' " 
-							 'ORDER BY `begin` LIMIT 2',
-							 ['lessonId','begin'])
+							 f"(groupId = {groupId[0][0]}{second_gr}) AND `end` > '{str_time}' "
+							 f"AND DATE(`begin`) = '{str_date}' "
+							 'ORDER BY `begin` LIMIT 3',
+							 ['lessonId','begin','numInDay'])
 			
 			if lessonId != []:
 				if len(lessonId) < 2:
 					return None, None
 				begin = lessonId[1][1]
-				date = begin
-				return lessonId[1][0], date
+				if len(lessonId) == 3 and lessonId[1][2] == lessonId[2][2]:
+					return [lessonId[1][0], lessonId[2][0]], begin
+				return [lessonId[1][0]], begin
 			
 		return None, None
 	

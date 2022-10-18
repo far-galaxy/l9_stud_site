@@ -137,23 +137,24 @@ class Bot():
 		
 	def nearLesson(self, l9Id):
 		now = datetime.datetime.now()
+		now = datetime.datetime(2022,9,6,15,10)
 		lessonId, date = self.shedule.nearLesson(l9Id, now)
 		if lessonId != None:
-			lesson = self.shedule.getLesson(lessonId)
+			lessons = [self.shedule.getLesson(i) for i in lessonId]
 			
 			if date.date() > now.date():
-				text = f'❗️ Сегодня пар нет\nБлижайшая пара '
+				text = f'❗️Сегодня пар нет\nБлижайшая пара '
 				if date.date() - now.date() == datetime.timedelta(days=1):
-					text += 'завтра:\n\n'
+					text += 'завтра:\n'
 				else:
-					text +=  f'{date.day} {month[date.month-1]}:\n\n'
+					text +=  f'{date.day} {month[date.month-1]}:\n'
 				
 			elif date.time() > now.time():
-				text = 'Ближайшая пара сегодня:\n\n'	
+				text = 'Ближайшая пара сегодня:\n'	
 			else: 
-				text = 'Текущая пара:\n\n'	
+				text = 'Текущая пара:\n'	
 				
-			text += self.strLesson(lesson)
+			text += self.strLesson(lessons)
 			
 		else:
 			text = 'Ой! Занятий не обнаружено!'
@@ -162,24 +163,16 @@ class Bot():
 	
 	def nextLesson(self, l9Id):
 		now = datetime.datetime.now()
-		lessonId, date = self.shedule.nextLesson(l9Id, now)
-		if lessonId != None:
-			lesson = self.shedule.getLesson(lessonId)
-			
-			if date.date() > now.date():
-				text = f'❗️ Сегодня пар дальше не будет\nСледующая пара после ближайшей '
-				if date.date() - now.date() == datetime.timedelta(days=1):
-					text += 'завтра:\n\n'
-				else:
-					text +=  f'{date.day} {month[date.month-1]}:\n\n'
+		now = datetime.datetime(2022,9,6,15,0)
+		lessonIds, date = self.shedule.nextLesson(l9Id, now)
+		if lessonIds != None:
+			lessons = [self.shedule.getLesson(i) for i in lessonIds]
 				
-			elif date.time() > now.time():
-				text = 'Следующая пара сегодня:\n\n'	
-				
-			text += self.strLesson(lesson)
+			text = 'Следующая пара после ближайшей или текущей:\n'		
+			text += self.strLesson(lessons)
 			
 		else:
-			text = 'Ой! Занятий не обнаружено!'
+			text = f'Сегодня пар больше не будет'
 
 		return text
 	
@@ -190,13 +183,13 @@ class Bot():
 		
 		if lessonIds != None:
 			if now.date() < date.date():
-				text = '❗️ Сегодня пар нет\nБлижайшие занятия '
+				text = '❗️Сегодня пар нет\nБлижайшие занятия '
 				if date.date() - now.date() == datetime.timedelta(days=1):
 					text += 'завтра:\n\n'
 				else:
 					text +=  f'{date.day} {month[date.month-1]}:\n'			
 			elif now.date() == date.date():
-				text = '🗓 Расписание на сегодня:\n'
+				text = '🗓Расписание на сегодня:\n'
 				
 			lessons = [self.shedule.getLesson(lid) for lid in lessonIds]
 			
