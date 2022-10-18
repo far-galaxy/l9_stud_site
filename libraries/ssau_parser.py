@@ -46,7 +46,7 @@ def getGroupInfo(groupId):
 lesson_types = ('lect','lab','pract','other')
 teacher_columns = ('surname','name','midname','teacherId')
 	
-def parseWeek(groupId, week):
+def parseWeek(groupId, week, teachers = []):
 	
 	soup = connect(groupId, week)
 		
@@ -65,7 +65,6 @@ def parseWeek(groupId, week):
 	times = []
 	shedule = []
 	week = []
-	teachers = []
 	for block in blocks:
 		if block.attrs['class'] == ['schedule__time']:
 			begin = datetime.datetime.strptime(block.contents[0].text,' %H:%M ').time()
@@ -97,17 +96,19 @@ def parseWeek(groupId, week):
 					teacher = sub_pair.select_one('.schedule__teacher a')
 					teacherId = teacher['href'][14:] if teacher != None else None
 					if teacher != None:
-						teacher_name = teacher.text[:-4]
-						t_info = findInRasp(teacher_name)['text'].split()
-						t_info.append(teacherId)
-						teachers.append(dict(zip(teacher_columns, t_info)))
+						if teacherId not in [str(i['teacherId']) for i in teachers]:
+							teacher_name = teacher.text[:-4]
+							t_info = findInRasp(teacher_name)['text'].split()
+							t_info.append(teacherId)
+							teachers.append(dict(zip(teacher_columns, t_info)))
 											
 					groups = sub_pair.select_one('div.schedule__groups').text
-					groups = groups if groups.find('группы') != -1 else ""
+					groups = "\n" + groups if groups.find('группы') != -1 else ""
 					
 					comment = sub_pair.select_one('div.schedule__comment').text
+					comment = comment if comment != "" else None
 					
-					full_name = f'{name} {groups} {comment}'		
+					full_name = f'{name}{groups}'		
 					
 					lesson = {
 						'numInDay' : numInDay,
@@ -117,7 +118,8 @@ def parseWeek(groupId, week):
 						'begin' : begin_dt,
 						'end' : end_dt,
 						'teacherId' : teacherId,
-						'place' : place}
+						'place' : place,
+						'add_info': comment}
 
 					shedule.append(lesson)
 					
@@ -128,11 +130,14 @@ def parseWeek(groupId, week):
 
 if __name__ == "__main__":	
 	import sql
-	lessons, teachers = parseWeek(530996168,8)
 	l9lk = sql.L9LK(open("pass.txt").read())
 	sh = sql.Shedule_DB(l9lk)
 	
-	g = getGroupInfo(530996168)
+	t_info = l9lk.db.get(sql.Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
+	t_info = [dict(zip(teacher_columns, i)) for i in t_info]
+	lessons, teachers = parseWeek(530996164, 2, t_info)	
+	
+	g = getGroupInfo(530996164)
 	l9lk.db.insert(sql.Shedule_DB.groups_table, g)
 	
 	for t in teachers:

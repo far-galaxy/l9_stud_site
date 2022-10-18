@@ -255,8 +255,9 @@ class Shedule_DB():
 		groupId = self.getGroup(l9Id)
 		
 		if groupId != None:
+			second_gr = f' OR groupId = {groupId[1][0]}' if len(groupId) == 2 else ""
 			lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
-							 f"groupId = {groupId} AND `end` > '{str_time}' " 
+							 f"(groupId = {groupId[0][0]}{second_gr}) AND `end` > '{str_time}' " 
 							 'ORDER BY `begin` LIMIT 1',
 							 ['lessonId','begin'])
 			
@@ -272,8 +273,9 @@ class Shedule_DB():
 		groupId = self.getGroup(l9Id)
 		
 		if groupId != None:
+			second_gr = f' OR groupId = {groupId[1][0]}' if len(groupId) == 2 else ""
 			lessonId = self.l9lk.db.get(Shedule_DB.lessons_table, 
-							 f"groupId = {groupId} AND `end` > '{str_time}' " 
+							 f"(groupId = {groupId[0][0]}{second_gr}) AND `end` > '{str_time}' " 
 							 'ORDER BY `begin` LIMIT 2',
 							 ['lessonId','begin'])
 			
@@ -294,8 +296,9 @@ class Shedule_DB():
 			str_nld = near_lesson_date.strftime("%Y-%m-%d")
 			groupId = self.getGroup(l9Id)
 			if groupId != None:
+				second_gr = f' OR groupId = {groupId[1][0]}' if len(groupId) == 2 else ""
 				lessonsId = self.l9lk.db.get(Shedule_DB.lessons_table, 
-								 f"groupId = {groupId} AND `begin` > '{str_time}' " 
+								 f"(groupId = {groupId[0][0]}{second_gr}) AND `begin` > '{str_time}' " 
 								 f"AND DATE(`begin`) = '{str_nld}' "
 								 'ORDER BY `begin`',
 								 ['lessonId','begin'])
@@ -361,7 +364,7 @@ class Shedule_DB():
 		
 	def getGroup(self, l9Id):
 		groupId = self.l9lk.db.get(Shedule_DB.gu_table, f'l9Id = {l9Id}',['groupId'])
-		return groupId[0][0] if groupId != [] else None
+		return groupId if groupId != [] else None
 	
 	def firstTimeCheck(self, time):
 		str_time = time.isoformat(sep=' ')
@@ -412,6 +415,7 @@ class Shedule_DB():
 				teacher = f"{info[2]} {info[1][0]}.{info[3][0]}."
 				
 			json_lesson = {
+				'numInDay': lesson[1],
 				'type' : icons[lesson[2]],
 				'name' : lesson[3],
 				'place' : lesson[8],

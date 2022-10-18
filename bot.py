@@ -185,6 +185,7 @@ class Bot():
 	
 	def dayShedule(self, l9Id):
 		now = datetime.datetime.now()
+		now = datetime.datetime(2022,9,6)
 		lessonIds, date = self.shedule.getDay(l9Id, now)
 		
 		if lessonIds != None:
@@ -193,25 +194,47 @@ class Bot():
 				if date.date() - now.date() == datetime.timedelta(days=1):
 					text += 'завтра:\n\n'
 				else:
-					text +=  f'{date.day} {month[date.month-1]}:\n\n'			
+					text +=  f'{date.day} {month[date.month-1]}:\n'			
 			elif now.date() == date.date():
-				text = '🗓 Расписание на сегодня:\n\n'
+				text = '🗓 Расписание на сегодня:\n'
 				
-			for lid in lessonIds:
-				lesson = self.shedule.getLesson(lid)
-				text += self.strLesson(lesson) + "\n\n"
+			lessons = [self.shedule.getLesson(lid) for lid in lessonIds]
+			
+			l = []
+			p = []
+			nums = [i['numInDay'] for i in lessons]
+			last_num = nums[0]
+			for np, i in enumerate(nums):
+				if i != last_num:
+					last_num = i
+					l.append(p)
+					p = [np]
+				else:
+					p.append(np)
+					
+				if np == len(nums) - 1:
+					l.append(p)
+					
+			for lesson in l:
+				text += self.strLesson([lessons[i] for i in lesson]) + "-"*32
+			
+			#for lid in lessonIds:
+				#lesson = self.shedule.getLesson(lid)
+				#text += self.strLesson(lesson) + "\n\n"
 		else:
 			text = 'Ой! Занятий не обнаружено!'
 
 		return text
 	
 	def strLesson(self, lesson):
-		begin = lesson['begin']
-		end = lesson['end']
-		text = ("📆 %02i:%02i - %02i:%02i\n" % (begin.hour, begin.minute, end.hour, end.minute))
-		add_info = "" if lesson['add_info'] == None else "\n"+lesson['add_info']
-		teacher = "" if lesson['teacher'] == None else "\n👤 "+lesson['teacher']
-		text += f"{lesson['type']} {lesson['name']}\n🧭 {lesson['place']}{teacher}{add_info}"
+		begin = lesson[0]['begin']
+		end = lesson[0]['end']
+		text = ("\n📆 %02i:%02i - %02i:%02i" % (begin.hour, begin.minute, end.hour, end.minute))
+		
+		for l in lesson:
+			add_info = "" if l['add_info'] == None else "\n"+l['add_info']
+			teacher = "" if l['teacher'] == None else "\n👤 "+l['teacher']
+			text += f"\n{l['type']} {l['name']}\n🧭 {l['place']}{teacher}{add_info}\n"			
 		return text
 				
 	def changeTag(self, uid, tag, platform = "TG"):
