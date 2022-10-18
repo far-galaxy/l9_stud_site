@@ -42,27 +42,11 @@ class Bot():
 						'Введи свой номер группы в краткой форме (например, 2305)']
 			
 		elif tag == 'started':
-			if Bot.group_num_format.match(text) is None:
-				return ['Группа введена неверно!']
-			else:
-				result = self.l9lk.db.get(
-					Shedule_DB.groups_table,
-					f'groupNumber = {text}', 
-					['groupId','specName']				
-				)
-				
-				if result != []:
-					result = result[0]
-					self.l9lk.db.insert(
-						Shedule_DB.gu_table,
-						{'l9Id' : l9Id,
-						 'groupId' : result[0]}
-					)	
-					self.changeTag(uid, 'ready', platform)
-					return [f'Поздравляем, твоя группа {text}, направление "{result[1]}", уже есть в моей базе!',
-							'❗️ Внимание! Бот работает в тестовом режиме, поэтому возможны сбои в работе\nЕсли бот не отвечает на запросы, не пишите ему больше ничего: автор заметит и как можно скорее исправит ошибку, и бот обязательно вам ответит :)']
-				else:
-					return ['К сожалению, такой группы в моей базе ещё нет :(']
+			ans = self.addGroup(l9Id, text)
+			if ans.find("!") != -1:
+				self.changeTag(uid, 'ready', platform)
+				ans.append('❗️ Внимание! Бот работает в тестовом режиме, поэтому возможны сбои в работе\nЕсли бот не отвечает на запросы, не пишите ему больше ничего: автор заметит и как можно скорее исправит ошибку, и бот обязательно вам ответит :)')
+			return ans			
 				
 		elif tag == 'ready':
 			if text == 'Ближайшая пара':
@@ -83,6 +67,28 @@ class Bot():
 						return ["Введи время в минутах, за которое тебе нужно сообщать о начале первой пары (от 20 до 240)"]
 					else:
 						return [self.changeFirstTime(l9Id, arg[0])]
+				if cmd == '/add':
+					groups_count = len(self.l9lk.db.get(Shedule_DB.gu_table, f'l9Id = {l9Id}'))
+					if groups_count >= 2:
+						return["Ты уже подключен к двум группам, больше нельзя. Введи команду /del, чтобы удалить ненужную группу"]
+					else:
+						if arg == None:
+							self.changeTag(uid, 'add', platform)
+							return ["Введи номер новой группы в краткой форме (например, 2305)"]
+						else:
+							return [self.addGroup(l9Id, arg[0])]
+						
+				if cmd == '/del':
+					groups_count = len(self.l9lk.db.get(Shedule_DB.gu_table, f'l9Id = {l9Id}'))
+					if groups_count == 0:
+						return["Ты пока не подключен ни к одной группе. Введи команду /add, чтобы подключить новую группу"]	
+					else:
+						if arg == None:
+							self.changeTag(uid, 'del', platform)
+							return ["Введи номер группы, которую хочешь удалить, в краткой форме (например, 2305)"]
+						else:
+							return [self.delGroup(l9Id, arg[0])]
+					
 				if str(uid) == config["tg"]["admin"]:
 					if cmd == "/mail":
 						self.groupMailing(tg_bot, arg[0], " ".join(arg[1:]))
@@ -90,11 +96,27 @@ class Bot():
 
 			return ['Aй!']
 		# Commands
+		elif text == '/cancel':
+			self.changeTag(uid, 'ready', platform)
+			return ['Возврат в главное меню']	
+		
 		elif tag == 'first_time':
 			ans = self.changeFirstTime(l9Id, text)
 			if ans.find("!") != -1:
 				self.changeTag(uid, 'ready', platform)
 			return [ans]
+		
+		elif tag == 'add':
+			ans = self.addGroup(l9Id, text)
+			if ans[0].find("!") != -1:
+				self.changeTag(uid, 'ready', platform)
+			return ans
+		
+		elif tag == 'del':
+			ans = self.delGroup(l9Id, text)
+			if ans[0].find("!") != -1:
+				self.changeTag(uid, 'ready', platform)
+			return [ans]	
 		
 		else:
 			return ['Ой!']
@@ -135,9 +157,45 @@ class Bot():
 		except ValueError:
 			return "Ой, это не похоже на число ):\nНапоминаю, что тебе нужно ввести время сообщения о начале пар"
 		
+	def addGroup(self, l9Id, groupName):
+		if Bot.group_num_format.match(groupName) is None:
+			return ['❗️Группа введена неверно']
+		else:
+			result = self.l9lk.db.get(
+						Shedule_DB.groups_table,
+						f'groupNumber = {groupName}', 
+						['groupId','specName']				
+					)
+	
+			if result != []:
+				result = result[0]
+				exists = self.l9lk.db.get(Shedule_DB.gu_table, f'groupId = {result[0]}')
+				if exists == []:
+					self.l9lk.db.insert(
+								Shedule_DB.gu_table,
+								{'l9Id' : l9Id,
+								 'groupId' : result[0]}
+							)	
+					return [f'Поздравляем, твоя группа {groupName}, направление "{result[1]}", подключена!']
+				else:
+					return ['❗️Эта группа уже подключена']
+			else:
+				return ['К сожалению, такой группы в моей базе ещё нет :(']	
+			
+	def delGroup(self, l9Id, groupName):
+		if Bot.group_num_format.match(groupName) is None:
+			return '❗️Группа введена неверно'
+		else:
+			groupId = self.l9lk.db.get(Shedule_DB.groups_table, f'groupNumber = {groupName}',['groupId'])
+			
+			if groupId != []:
+				self.l9lk.db.execute(f"""DELETE FROM l9_lk_test.groups_users WHERE groupId = {groupId[0][0]} AND l9Id = {l9Id};""")
+				return "Группа успешно удалена! (если вообще была подключена (;)"
+			else:
+				return "❗Ошибка: группа не найдена"
+		
 	def nearLesson(self, l9Id):
 		now = datetime.datetime.now()
-		now = datetime.datetime(2022,9,6,15,10)
 		lessonId, date = self.shedule.nearLesson(l9Id, now)
 		if lessonId != None:
 			lessons = [self.shedule.getLesson(i) for i in lessonId]
@@ -163,7 +221,6 @@ class Bot():
 	
 	def nextLesson(self, l9Id):
 		now = datetime.datetime.now()
-		now = datetime.datetime(2022,9,6,15,0)
 		lessonIds, date = self.shedule.nextLesson(l9Id, now)
 		if lessonIds != None:
 			lessons = [self.shedule.getLesson(i) for i in lessonIds]
@@ -178,7 +235,6 @@ class Bot():
 	
 	def dayShedule(self, l9Id):
 		now = datetime.datetime.now()
-		now = datetime.datetime(2022,9,6)
 		lessonIds, date = self.shedule.getDay(l9Id, now)
 		
 		if lessonIds != None:
@@ -210,10 +266,7 @@ class Bot():
 					
 			for lesson in l:
 				text += self.strLesson([lessons[i] for i in lesson]) + "-"*32
-			
-			#for lid in lessonIds:
-				#lesson = self.shedule.getLesson(lid)
-				#text += self.strLesson(lesson) + "\n\n"
+
 		else:
 			text = 'Ой! Занятий не обнаружено!'
 
