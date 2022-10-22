@@ -4,6 +4,7 @@ from libraries.ssau_parser import *
 import datetime
 import re
 from time import sleep
+from itertools import groupby
 
 import logging
 logger = logging.getLogger('bot')
@@ -152,18 +153,20 @@ class Bot():
 	def loadShedule(self, groupId, date):
 		week = date.isocalendar()[1] - first_week
 		
+		self.l9lk.db.execute(f'DELETE FROM {Shedule_DB.lessons_table} WHERE WEEK(`begin`, 1) = {date.isocalendar()[1]};')
+		
 		t_info = self.l9lk.db.get(Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
 		t_info = [dict(zip(teacher_columns, i)) for i in t_info]				
 		lessons, teachers = parseWeek(groupId, week, t_info)
 				
 		g = getGroupInfo(groupId)
-		l9lk.db.insert(Shedule_DB.groups_table, g)
+		self.l9lk.db.insert(Shedule_DB.groups_table, g)
 			
 		for t in teachers:
-			l9lk.db.insert(Shedule_DB.teachers_table, t)	
+			self.l9lk.db.insert(Shedule_DB.teachers_table, t)	
 			
 		for l in lessons:	
-			l9lk.db.insert(Shedule_DB.lessons_table, l)	
+			self.l9lk.db.insert(Shedule_DB.lessons_table, l)	
 	
 	def getTag(self, msg):
 		platform = msg['platform']
@@ -249,7 +252,7 @@ class Bot():
 			else:
 				return "❗Ошибка: группа не найдена"
 		
-	def nearLesson(self, l9Id, retry = False):
+	def nearLesson(self, l9Id, retry = 0):
 		now = datetime.datetime.now()
 		lessonId, date = self.shedule.nearLesson(l9Id, now)
 		if lessonId != None:
@@ -269,11 +272,12 @@ class Bot():
 				
 			text += self.strLesson(lessons)
 			
-		elif not retry:
+		elif retry < 2:
 			groupIds = self.shedule.getGroup(l9Id)
 			for groupId in groupIds:
+				now += datetime.timedelta(days = 7 * retry)
 				self.loadShedule(groupId[0], now)
-				return self.nearLesson(l9Id, True)
+				return self.nearLesson(l9Id, retry+1)
 		else:
 			text = 'Ой! Занятий не обнаружено!'
 
@@ -296,6 +300,8 @@ class Bot():
 	def sortDayShedule(self, lessonIds):
 		lessons = [self.shedule.getLesson(lid) for lid in lessonIds]
 		
+		l = [list(day) for date, day in groupby(lessons, key = lambda d: d['numInDay'])]	
+		"""
 		l = []
 		p = []
 		nums = [i['numInDay'] for i in lessons]
@@ -310,13 +316,14 @@ class Bot():
 				
 			if np == len(nums) - 1:
 				l.append(p)
-				
+			"""	
+		text = ''
 		for lesson in l:
-			text += self.strLesson([lessons[i] for i in lesson]) + "-"*32
+			text += self.strLesson(lesson) + "-"*32
 		return text
 		
 	
-	def dayShedule(self, l9Id, retry = False):
+	def dayShedule(self, l9Id, retry = 0):
 		now = datetime.datetime.now()
 		lessonIds, date = self.shedule.getDay(l9Id, now)
 		
@@ -332,11 +339,12 @@ class Bot():
 				
 			text += self.sortDayShedule(lessonIds)
 			
-		elif not retry:
+		elif retry < 2:
 			groupIds = self.shedule.getGroup(l9Id)
 			for groupId in groupIds:
+				now += datetime.timedelta(days = 7 * retry)
 				self.loadShedule(groupId[0], now)
-			return self.dayShedule(l9Id, True)
+				return self.dayShedule(l9Id, retry+1)
 		else:
 			text = 'Ой! Занятий не обнаружено!'
 
@@ -366,6 +374,7 @@ class Bot():
 		last_lessons = self.shedule.lastLesson(time)
 		
 		mailing = {}
+		next_day = {}
 		
 		for groupId, lesson in lessons:
 			text = "❗️ Следующая пара: \n"
@@ -379,8 +388,18 @@ class Bot():
 			
 		for groupId, lesson in last_lessons:
 			text = "❗️ Сегодня пар больше нет\n"	
-			mailing[groupId] = text
+			next_day[groupId] = text
 			
+		next_lessons = self.shedule.checkNextDay(time)
+		if next_lessons != []:
+			for groupId, day in next_lessons:
+				if groupId in next_day:
+					text = 'Следующие занятия завтра:\n'
+					text += self.sortDayShedule([i[0] for i in day])
+					next_day[groupId] += text
+					
+		mailing.update(next_day)
+					
 		return mailing
 			
 	def groupMailing(self, bot, groupId, msg):
@@ -481,7 +500,7 @@ if __name__ == "__main__":
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
 			logger.debug("check "+now.isoformat())
-			timer = datetime.datetime(2022,10,21,15,5)
+			#timer = datetime.datetime(2022,10,19,15,5)
 			bot.firstMailing(tg_bot, timer)
 			
 			mail = bot.checkLesson(timer)

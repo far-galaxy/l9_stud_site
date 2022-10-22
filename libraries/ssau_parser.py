@@ -3,10 +3,12 @@ from bs4 import BeautifulSoup
 from ast import literal_eval
 import time
 import datetime
+from itertools import groupby
 import logging
 logger = logging.getLogger('bot')
 
 def findInRasp(req):
+	logger.debug(f'Find {req}')
 	rasp = requests.Session() 
 	hed = rasp.get("https://ssau.ru/rasp/")
 	soup = BeautifulSoup(hed.text, 'lxml')
@@ -134,25 +136,34 @@ def parseWeek(groupId, week, teachers = []):
 					
 			weekday += 1
 		
-	shedule = sorted(shedule, key=lambda d: d['begin'])	
-	return shedule, teachers
+	shedule = sorted(shedule, key = lambda d: d['begin'])
+	new_shedule = []
+
+	# Correct numInDay
+	for date, day in groupby(shedule, key = lambda d: d['begin'].date()):
+		day = list(day)
+		first_num = day[0]['numInDay'] - 1
+		for l in day:
+			l['numInDay'] -= first_num
+			new_shedule.append(l)	
+	return new_shedule, teachers
 
 if __name__ == "__main__":	
 	import sql
 	l9lk = sql.L9LK(open("pass.txt").read())
 	sh = sql.Shedule_DB(l9lk)
 	
-	t = findInRasp('2107')
+	#t = findInRasp('2107')
 	
 	t_info = l9lk.db.get(sql.Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
 	t_info = [dict(zip(teacher_columns, i)) for i in t_info]
 	lessons, teachers = parseWeek(530996164, 2, t_info)	
 	
-	g = getGroupInfo(530996164)
-	l9lk.db.insert(sql.Shedule_DB.groups_table, g)
+	#g = getGroupInfo(530996164)
+	#l9lk.db.insert(sql.Shedule_DB.groups_table, g)
 	
 	for t in teachers:
 		l9lk.db.insert(sql.Shedule_DB.teachers_table, t)	
 		
-	for l in lessons:	
-		l9lk.db.insert(sql.Shedule_DB.lessons_table, l)
+	#for l in lessons:	
+		#l9lk.db.insert(sql.Shedule_DB.lessons_table, l)
