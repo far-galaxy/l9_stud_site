@@ -37,7 +37,7 @@ class Bot():
 		if tag == 'not_started':
 			count = len(self.l9lk.db.get(L9LK.users_table,f'l9Id != 0', ['l9Id']))
 						
-			if count >= 30:
+			if count >= config['limit']:
 				return ['Бот работает в тестовом режиме, поэтому количество пользователей временно ограничено.\nК сожалению, в данный момент лимит превышен, поэтому доступ для вас закрыт. Попробуйте зайти на следующей неделе, когда лимит будет повышен']
 				
 			if text != '/start':
@@ -102,7 +102,13 @@ class Bot():
 				if str(uid) == config["tg"]["admin"]:
 					if cmd == "/mail":
 						self.groupMailing(tg_bot, arg[0], " ".join(arg[1:]))
-						return["Сообщения отправлены"]
+						return[f"Сообщения отправлены {arg[0]}"]
+					
+					if cmd == "/scream":
+						users = self.l9lk.db.get(TG_DB.users_table, 'tgId != 0',['tgId'])
+						for user in users:
+							tg_bot.sendMessage(user[0], " ".join(arg))
+						return["Сообщения отправлены"]					
 
 			return ['Aй!']
 		# Commands
