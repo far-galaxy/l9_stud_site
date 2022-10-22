@@ -3,6 +3,8 @@ from bs4 import BeautifulSoup
 from ast import literal_eval
 import time
 import datetime
+import logging
+logger = logging.getLogger('bot')
 
 def findInRasp(req):
 	rasp = requests.Session() 
@@ -23,14 +25,21 @@ def findInRasp(req):
 	else:
 		return num[0]
 	
-def connect(groupId, week):
+def connect(groupId, week, reconnects = 0):
+	logger.debug(f'Connecting to sasau, groupId = {groupId}, week N {week}, attempt {reconnects}')
 	site = requests.get(f'https://ssau.ru/rasp?groupId={groupId}&selectedWeek={week}')
-	contents = site.text.replace("\n", " ")	
-	
-	soup = BeautifulSoup(contents, 'html.parser')
-	return soup
+	if site.status_code == 200:
+		contents = site.text.replace("\n", " ")	
+		soup = BeautifulSoup(contents, 'html.parser')
+		return soup
+	elif reconnects < 10:
+		time.sleep(2)
+		return connect(groupId, week, reconnects+1)
+	else:
+		raise 'Connection to sasau failed!'
 	
 def getGroupInfo(groupId):
+	logger.debug(f'Getting group {groupId} information')
 	soup = connect(groupId, 1)
 	
 	group_spec_soup = soup.find("div", {"class": "body-text info-block__description"}) 
@@ -132,6 +141,8 @@ if __name__ == "__main__":
 	import sql
 	l9lk = sql.L9LK(open("pass.txt").read())
 	sh = sql.Shedule_DB(l9lk)
+	
+	t = findInRasp('2107')
 	
 	t_info = l9lk.db.get(sql.Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
 	t_info = [dict(zip(teacher_columns, i)) for i in t_info]

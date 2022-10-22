@@ -16,9 +16,9 @@ class TGbot():
 				if update.message:
 					msg = {
 					'platform' : "TG",
-					'uid' : update.message.from_user.id,
-					'text' : update.message.text,
-					'name' : f'{update.message.from_user.first_name} {update.message.from_user.last_name}'
+					'uid' : str(update.message.from_user.id),
+					'name' : f'{update.message.from_user.first_name} {update.message.from_user.last_name}',					
+					'text' : update.message.text
 					}
 					messages.append(msg)
 		except TimedOut:
@@ -42,6 +42,11 @@ class TGbot():
 		#kb.add(telegram.KeyboardButton("Ближайшая пара"))
 		
 		return kb
+	
+	def confirmKeyboard(self):
+		buttons = [[telegram.KeyboardButton("✅ Да"), 
+				   telegram.KeyboardButton("⛔ Нет")]]
+		return telegram.ReplyKeyboardMarkup(buttons, one_time_keyboard=True, resize_keyboard=True)
 	
 	def sendMessage(self, uid, text, key=None):
 		self.bot.send_message(uid, text, reply_markup=key)

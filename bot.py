@@ -1,12 +1,14 @@
 from libraries.sql import *
-from libraries.utils import *
+#from libraries.utils import *
+from libraries.ssau_parser import *
 import datetime
 import re
 from time import sleep
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('bot')
 
+first_week = 34
 
 month = ("января", "февраля", "марта", "апреля", "мая", "июня", 
 		 "июля", "августа", "сентября", "октября", "ноября", "декабря")
@@ -32,20 +34,27 @@ class Bot():
 		tag, l9Id = self.getTag(msg)
 		
 		if tag == 'not_started':
+			count = len(self.l9lk.db.get(L9LK.users_table,f'l9Id != 0', ['l9Id']))
+						
+			if count >= 30:
+				return ['Бот работает в тестовом режиме, поэтому количество пользователей временно ограничено.\nК сожалению, в данный момент лимит превышен, поэтому доступ для вас закрыт. Попробуйте зайти на следующей неделе, когда лимит будет повышен']
+				
 			if text != '/start':
 				return ['Нажми /start, чтобы начать']
 			else:
 				self.changeTag(uid, 'started', platform)
 				return ['Приветствую тебя!',
 						'Я буду напоминать тебе о ближайших парах!',
+						'❗️ Внимание! Бот работает в тестовом режиме, поэтому возможны сбои в работе\nЕсли бот не отвечает на запросы, не пишите ему больше ничего: автор заметит и как можно скорее исправит ошибку, и бот обязательно вам ответит :)',
 						'Для начала определимся, откуда ты\n' 
 						'Введи свой номер группы в краткой форме (например, 2305)']
 			
 		elif tag == 'started':
 			ans = self.addGroup(l9Id, text)
-			if ans.find("!") != -1:
+			if ans[0].find("!") != -1:
 				self.changeTag(uid, 'ready', platform)
-				ans.append('❗️ Внимание! Бот работает в тестовом режиме, поэтому возможны сбои в работе\nЕсли бот не отвечает на запросы, не пишите ему больше ничего: автор заметит и как можно скорее исправит ошибку, и бот обязательно вам ответит :)')
+			elif ans[0].find("ssau") != -1:
+				self.changeTag(uid, f'conf_{text}', platform)
 			return ans			
 				
 		elif tag == 'ready':
@@ -60,7 +69,7 @@ class Bot():
 				cmd = text[0]
 				arg = text[1:] if len(text) > 1 else None
 				if cmd == '/help':
-					return [open('libraries/help', encoding='utf-8').read()]
+					return [open('libraries/help.txt', encoding='utf-8').read()]
 				if cmd == '/first_time':
 					if arg == None:
 						self.changeTag(uid, 'first_time', platform)
@@ -100,6 +109,23 @@ class Bot():
 			self.changeTag(uid, 'ready', platform)
 			return ['Возврат в главное меню']	
 		
+		elif tag.find('conf') != -1:
+			if text == '✅ Да':
+				groupName = tag[-4:]
+				now_week = datetime.datetime.now()
+				groupId = findInRasp(groupName)['id']
+				self.loadShedule(groupId, now_week)
+					
+				self.l9lk.db.insert(Shedule_DB.gu_table,
+									{'l9Id' : l9Id,
+									 'groupId' : groupId})
+					
+				self.changeTag(uid, 'ready', platform)
+				return ['Поздравляю, твоя группа загружена в мою базу данных! Теперь ты можешь пользоваться всем функционалом бота, подробнее в справке /help']
+			else:
+				['Ой, возможно, произошла какая-то ошибка :(']
+				
+		
 		elif tag == 'first_time':
 			ans = self.changeFirstTime(l9Id, text)
 			if ans.find("!") != -1:
@@ -110,6 +136,8 @@ class Bot():
 			ans = self.addGroup(l9Id, text)
 			if ans[0].find("!") != -1:
 				self.changeTag(uid, 'ready', platform)
+			elif ans[0].find("ssau") != -1:
+				self.changeTag(uid, f'conf_{text}', platform)			
 			return ans
 		
 		elif tag == 'del':
@@ -121,6 +149,22 @@ class Bot():
 		else:
 			return ['Ой!']
 		
+	def loadShedule(self, groupId, date):
+		week = date.isocalendar()[1] - first_week
+		
+		t_info = self.l9lk.db.get(Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
+		t_info = [dict(zip(teacher_columns, i)) for i in t_info]				
+		lessons, teachers = parseWeek(groupId, week, t_info)
+				
+		g = getGroupInfo(groupId)
+		l9lk.db.insert(Shedule_DB.groups_table, g)
+			
+		for t in teachers:
+			l9lk.db.insert(Shedule_DB.teachers_table, t)	
+			
+		for l in lessons:	
+			l9lk.db.insert(Shedule_DB.lessons_table, l)	
+	
 	def getTag(self, msg):
 		platform = msg['platform']
 		uid = msg['uid']
@@ -180,7 +224,18 @@ class Bot():
 				else:
 					return ['❗️Эта группа уже подключена']
 			else:
-				return ['К сожалению, такой группы в моей базе ещё нет :(']	
+				group = findInRasp(groupName)
+				if group != None:
+					group_url = f'ssau.ru/{group["url"][2:]}'
+					gr_num = group["text"]
+					groupId = group["id"]
+					
+					return['Такой группы у меня пока нет в базе, но она есть на сайте\n'+
+						   f'{group_url}\n'+
+						   'Проверь, пожалуйста, что это твоя группа и нажми кнопку\n'+
+						   '(после нажатия кнопки начнётся загрузка расписания, которое займёт не более пары минут)']
+				else:
+					return ['К сожалению, такой группы нет ни в моей базе, ни на сайте университета :(']	
 			
 	def delGroup(self, l9Id, groupName):
 		if Bot.group_num_format.match(groupName) is None:
@@ -194,7 +249,7 @@ class Bot():
 			else:
 				return "❗Ошибка: группа не найдена"
 		
-	def nearLesson(self, l9Id):
+	def nearLesson(self, l9Id, retry = False):
 		now = datetime.datetime.now()
 		lessonId, date = self.shedule.nearLesson(l9Id, now)
 		if lessonId != None:
@@ -214,6 +269,11 @@ class Bot():
 				
 			text += self.strLesson(lessons)
 			
+		elif not retry:
+			groupIds = self.shedule.getGroup(l9Id)
+			for groupId in groupIds:
+				self.loadShedule(groupId[0], now)
+				return self.nearLesson(l9Id, True)
 		else:
 			text = 'Ой! Занятий не обнаружено!'
 
@@ -233,7 +293,30 @@ class Bot():
 
 		return text
 	
-	def dayShedule(self, l9Id):
+	def sortDayShedule(self, lessonIds):
+		lessons = [self.shedule.getLesson(lid) for lid in lessonIds]
+		
+		l = []
+		p = []
+		nums = [i['numInDay'] for i in lessons]
+		last_num = nums[0]
+		for np, i in enumerate(nums):
+			if i != last_num:
+				last_num = i
+				l.append(p)
+				p = [np]
+			else:
+				p.append(np)
+				
+			if np == len(nums) - 1:
+				l.append(p)
+				
+		for lesson in l:
+			text += self.strLesson([lessons[i] for i in lesson]) + "-"*32
+		return text
+		
+	
+	def dayShedule(self, l9Id, retry = False):
 		now = datetime.datetime.now()
 		lessonIds, date = self.shedule.getDay(l9Id, now)
 		
@@ -247,26 +330,13 @@ class Bot():
 			elif now.date() == date.date():
 				text = '🗓Расписание на сегодня:\n'
 				
-			lessons = [self.shedule.getLesson(lid) for lid in lessonIds]
+			text += self.sortDayShedule(lessonIds)
 			
-			l = []
-			p = []
-			nums = [i['numInDay'] for i in lessons]
-			last_num = nums[0]
-			for np, i in enumerate(nums):
-				if i != last_num:
-					last_num = i
-					l.append(p)
-					p = [np]
-				else:
-					p.append(np)
-					
-				if np == len(nums) - 1:
-					l.append(p)
-					
-			for lesson in l:
-				text += self.strLesson([lessons[i] for i in lesson]) + "-"*32
-
+		elif not retry:
+			groupIds = self.shedule.getGroup(l9Id)
+			for groupId in groupIds:
+				self.loadShedule(groupId[0], now)
+			return self.dayShedule(l9Id, True)
 		else:
 			text = 'Ой! Занятий не обнаружено!'
 
@@ -298,17 +368,17 @@ class Bot():
 		mailing = {}
 		
 		for groupId, lesson in lessons:
-			text = "❗️ Следующая пара: \n\n"
+			text = "❗️ Следующая пара: \n"
 			text += self.strLesson(lesson)
 			mailing[groupId] = text
 			
 		for groupId, lesson in first_lessons:
-			text = "❗️ Первая пара: \n\n"
+			text = "❗️ Первая пара: \n"
 			text += self.strLesson(lesson)
 			mailing[groupId] = text
 			
 		for groupId, lesson in last_lessons:
-			text = "❗️ Сегодня пар больше нет"	
+			text = "❗️ Сегодня пар больше нет\n"	
 			mailing[groupId] = text
 			
 		return mailing
@@ -385,10 +455,16 @@ if __name__ == "__main__":
 	while True:
 		msgs = tg_bot.checkMessages()
 		for msg in msgs:
-			logger.info(msg.values())
+			logger.info("\t".join(msg.values()))
 			answer = bot.checkMessage(msg)
 			tag, _ = bot.getTag(msg)
-			key = tg_bot.keyboard() if tag == 'ready' else None
+			
+			if tag == 'ready':
+				key = tg_bot.keyboard()
+			elif tag.find('conf') != -1:
+				key = tg_bot.confirmKeyboard()
+			else:
+				key = None
 			if isinstance(answer, list): 
 				for i in answer:
 					tg_bot.sendMessage(msg['uid'], i, key)	
@@ -405,7 +481,7 @@ if __name__ == "__main__":
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
 			logger.debug("check "+now.isoformat())
-			#timer = datetime.datetime(2022,10,20,18,00)
+			timer = datetime.datetime(2022,10,21,15,5)
 			bot.firstMailing(tg_bot, timer)
 			
 			mail = bot.checkLesson(timer)

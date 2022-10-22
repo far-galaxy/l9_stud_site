@@ -2,6 +2,11 @@ from mysql.connector import connect
 import random
 import datetime
 
+from .utils import *
+import logging
+logger = logging.getLogger('sql')
+initLogger(logger,'sql')
+
 class Database():
 	"""Mini module for mysql connector"""
 	def __init__(self, host, user, password):
@@ -20,6 +25,8 @@ class Database():
 		    :cursor: result of query
 		"""
 		if query.lower().find("drop") == -1 and query.lower().find("truncate") == -1:
+			if query.lower().find('create') == -1:
+				logger.info(query)
 			self.cursor.execute(query)
 			if commit:
 				self.database.commit()
@@ -67,7 +74,9 @@ class Database():
 		"""			
 		query = "SELECT " + (', '.join(columns) if columns != None else "*")
 		query += f" FROM `{name}` WHERE {condition};"
-		return self.execute(query).fetchall()
+		result = self.execute(query).fetchall()
+		logger.info(result)
+		return result
 	
 	def addRow(self, name, row):
 		query = f"ALTER TABLE {name}"
@@ -303,7 +312,7 @@ class Shedule_DB():
 			if groupId != None:
 				second_gr = f' OR groupId = {groupId[1][0]}' if len(groupId) == 2 else ""
 				lessonsId = self.l9lk.db.get(Shedule_DB.lessons_table, 
-								 f"(groupId = {groupId[0][0]}{second_gr}) AND `begin` > '{str_time}' " 
+								 f"(groupId = {groupId[0][0]}{second_gr})"# AND `begin` > '{str_time}' " 
 								 f"AND DATE(`begin`) = '{str_nld}' "
 								 'ORDER BY `begin`',
 								 ['lessonId','begin'])
@@ -331,20 +340,20 @@ class Shedule_DB():
 													 f"AND DATE(`end`) = '{str_date}' ",
 													 ['lessonId'])
 				if next_lessonId != []:
-					lessons.append((i[1], self.getLesson(next_lessonId[0][0])))
+					lessons.append((i[1], 
+									[self.getLesson(lid[0]) for lid in next_lessonId]))
 				
 		
 		first_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
 										 f"DATE(`begin`) = '{str_date}' "
-										 'ORDER BY `begin` LIMIT 1',
+										 'ORDER BY `begin` LIMIT 2',
 										 ['lessonId','groupId'])
 		first_lessons = []
 		if first_lessonIds != []:
 			for i in first_lessonIds:
 				if i != None:
 					l = self.getLesson(i[0])
-					l["begin"] = l["begin"] - datetime.timedelta(minutes=10)
-					if l["begin"] == time:
+					if l["begin"] - datetime.timedelta(minutes=10) == time:
 						first_lessons.append((i[1], l))
 					
 		return lessons, first_lessons

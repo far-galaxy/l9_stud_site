@@ -19,11 +19,11 @@ def saveJSON(name, dct):
 				  ensure_ascii=False,
 				  indent="\t")
 		
-def initLogger(logger):
+def initLogger(logger, name = 'log'):
 	if not os.path.isdir(f'logs'):
 		os.makedirs(f'logs') 
 
-	f_handler = logging.handlers.TimedRotatingFileHandler('./logs/log', 
+	f_handler = logging.handlers.TimedRotatingFileHandler(f'./logs/{name}', 
 	                                                      when='midnight', 
 	                                                      #atTime=datetime.time(11,25), 
 	                                                      encoding="utf-8")
