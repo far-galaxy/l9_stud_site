@@ -328,7 +328,8 @@ class Shedule_DB():
 		lessons = []
 		prev_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
 										 f"`end` = '{str_time}' " 
-										 f"AND DATE(`end`) = '{str_date}' ",
+										 f"AND DATE(`end`) = '{str_date}' "
+										 'AND `numInDay` != 1',
 										 ['lessonId','groupId','numInDay'])
 		
 		if prev_lessonIds != []:
@@ -344,17 +345,21 @@ class Shedule_DB():
 									[self.getLesson(lid[0]) for lid in next_lessonId]))
 				
 		
-		first_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
+		first_groupsIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
 										 f"DATE(`begin`) = '{str_date}' "
-										 'ORDER BY `begin` LIMIT 2',
-										 ['lessonId','groupId'])
+										 'AND `numInDay` = 1',
+										 ['groupId'])
 		first_lessons = []
-		if first_lessonIds != []:
-			for i in first_lessonIds:
-				if i != None:
-					l = self.getLesson(i[0])
-					if l["begin"] - datetime.timedelta(minutes=10) == time:
-						first_lessons.append((i[1], l))
+		if first_groupsIds != []:
+			first_groupsIds = set(first_groupsIds)
+			for i in first_groupsIds:
+				first_lessonIds = self.l9lk.db.get(Shedule_DB.lessons_table, 
+													   f"DATE(`begin`) = '{str_date}' "
+													   'AND `numInDay` = 1 '
+													   f'AND `groupId` = {i[0]}',
+													   ['lessonId', 'begin'])
+				if first_lessonIds[0][1] - datetime.timedelta(minutes=10) == time:
+					first_lessons.append((i[0], [self.getLesson(l[0]) for l in first_lessonIds]))
 					
 		return lessons, first_lessons
 	
@@ -384,7 +389,7 @@ class Shedule_DB():
 		str_time = time.isoformat(sep=' ')
 		str_data = time.strftime("%Y-%m-%d")
 		
-		query = f"DELETE FROM first_mail WHERE mailTime < '{str_time}';"
+		query = f"DELETE FROM first_mail WHERE mailTime <= '{str_time}';"
 		
 		self.l9lk.db.execute(query, commit=True)
 		

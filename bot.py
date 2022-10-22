@@ -301,22 +301,6 @@ class Bot():
 		lessons = [self.shedule.getLesson(lid) for lid in lessonIds]
 		
 		l = [list(day) for date, day in groupby(lessons, key = lambda d: d['numInDay'])]	
-		"""
-		l = []
-		p = []
-		nums = [i['numInDay'] for i in lessons]
-		last_num = nums[0]
-		for np, i in enumerate(nums):
-			if i != last_num:
-				last_num = i
-				l.append(p)
-				p = [np]
-			else:
-				p.append(np)
-				
-			if np == len(nums) - 1:
-				l.append(p)
-			"""	
 		text = ''
 		for lesson in l:
 			text += self.strLesson(lesson) + "-"*32
@@ -430,16 +414,17 @@ class Bot():
 		else:
 			head = "Добрый вечер 🌃\n"
 		if mail != []:
+			mail = [list(day) for date, day in groupby(mail, key = lambda d: d[0])]
 			for user in mail:
-				mn = user[2] % 10
+				mn = user[0][2] % 10
 				end = ""
 				if mn == 1:
 					end = "у"
 				elif mn > 1 and mn < 5:
 					end = "ы"
-				text = f"{head}Через {user[2]} минут{end} начнутся занятия\n\nПервая пара:\n"
-				text += self.strLesson(self.shedule.getLesson(user[1]))
-				bot.sendMessage(user[0], text, tg_bot.keyboard())
+				text = f"{head}Через {user[0][2]} минут{end} начнутся занятия\n\nПервая пара:\n"
+				text += self.strLesson([self.shedule.getLesson(a[1]) for a in user])
+				bot.sendMessage(user[0][0], text, tg_bot.keyboard())
 				
 	def nextDay(self, bot, time):
 		lessons = self.shedule.checkNextDay(time)
@@ -500,13 +485,13 @@ if __name__ == "__main__":
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
 			logger.debug("check "+now.isoformat())
-			#timer = datetime.datetime(2022,10,19,15,5)
+			#timer = datetime.datetime(2022,10,19,7,15)
 			bot.firstMailing(tg_bot, timer)
 			
 			mail = bot.checkLesson(timer)
 			for groupId, msg in mail.items():
 				bot.groupMailing(tg_bot, groupId, msg)
 				
-			if timer.hour == 19 and timer.minute == 00:
-				bot.nextDay(tg_bot, now)
+			#if timer.hour == 19 and timer.minute == 00:
+				#bot.nextDay(tg_bot, now)
 
