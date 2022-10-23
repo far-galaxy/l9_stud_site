@@ -149,7 +149,7 @@ class Bot():
 		
 		elif tag == 'del':
 			ans = self.delGroup(l9Id, text)
-			if ans[0].find("!") != -1:
+			if ans.find("!") != -1:
 				self.changeTag(uid, 'ready', platform)
 			return [ans]	
 		
@@ -464,28 +464,31 @@ if __name__ == "__main__":
 	
 	while True:
 		msgs = tg_bot.checkMessages()
-		for msg in msgs:
-			logger.info("\t".join(msg.values()))
-			answer = bot.checkMessage(msg)
-			tag, _ = bot.getTag(msg)
-			
-			if tag == 'ready':
-				key = tg_bot.keyboard()
-			elif tag.find('conf') != -1:
-				key = tg_bot.confirmKeyboard()
-			else:
-				key = None
-			if isinstance(answer, list): 
-				for i in answer:
-					tg_bot.sendMessage(msg['uid'], i, key)	
-					
-			elif isinstance(answer, Exception): 
-				logger.error(answer, exc_info=True)
-			else:
-				if answer == "Flood Stop":
-					sleep(5)
+		if isinstance(msgs, list): 
+			for msg in msgs:
+				logger.info("\t".join(msg.values()))
+				answer = bot.checkMessage(msg)
+				tag, _ = bot.getTag(msg)
+				
+				if tag == 'ready':
+					key = tg_bot.keyboard()
+				elif tag.find('conf') != -1:
+					key = tg_bot.confirmKeyboard()
+				else:
+					key = None
+				if isinstance(answer, list): 
+					for i in answer:
+						tg_bot.sendMessage(msg['uid'], i, key)	
+						
+				elif isinstance(answer, Exception): 
+					logger.error(answer, exc_info=True)
 				else:
 					logger.warning(answer)
+						
+		else:
+			if isinstance(msgs, str) and msgs == "Flood Stop":
+				sleep(5)			
+			logger.error(msgs, exc_info=True)
 		
 		now = datetime.datetime.now()	
 		if now - timer > datetime.timedelta(minutes=5):
