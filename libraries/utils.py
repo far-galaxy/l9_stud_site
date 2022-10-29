@@ -4,6 +4,21 @@ import os
 import logging
 import logging.handlers
 
+month = (
+	"января",
+	"февраля",
+	"марта",
+	"апреля",
+	"мая",
+	"июня",
+	"июля",
+	"августа",
+	"сентября",
+	"октября",
+	"ноября",
+	"декабря",
+)
+
 def loadJSON(name):
 	path = f"{name}.json"
 	if os.path.exists(path):

@@ -6,6 +6,7 @@ import datetime
 import re
 from time import sleep
 from itertools import groupby
+import telegram
 
 import logging
 
@@ -13,34 +14,91 @@ logger = logging.getLogger('bot')
 
 first_week = 34
 
-month = (
-    "января",
-    "февраля",
-    "марта",
-    "апреля",
-    "мая",
-    "июня",
-    "июля",
-    "августа",
-    "сентября",
-    "октября",
-    "ноября",
-    "декабря",
-)
-
 
 class Bot:
 
     group_num_format = re.compile('\d{4}')
 
-    def __init__(self, db, shedule):
+    def __init__(self, token, db, shedule):
         self.l9lk = db
         self.users_id = {}
         self.users_db = {}
         self.shedule = shedule
+        self.tg = telegram.Bot(token)
+        self.udpate_id = None
 
-    def checkMessage(self, msg):
+    def classicKeyboard(self, now=""):
+        keys = {
+            "near": "Ближайшая пара",
+            "next": "Следующая пара",
+            "tday": "Расписание на сегодня",
+        }
 
+        if now == "":
+            buttons = [
+                [
+                    telegram.InlineKeyboardButton(
+                        "Ближайшая пара", callback_data="near"
+                    ),
+                    telegram.InlineKeyboardButton(
+                        "Следующая пара", callback_data="next"
+                    ),
+                ],
+                [
+                    telegram.InlineKeyboardButton(
+                        "Расписание на сегодня", callback_data="tday"
+                    ),
+                ],
+            ]
+
+        else:
+            keys.pop(now)
+            buttons = [
+                [
+                    telegram.InlineKeyboardButton(keys[i], callback_data=i)
+                    for i in keys
+                ]
+            ]
+
+        return telegram.InlineKeyboardMarkup(buttons)
+
+    def checkMessages(self):
+
+        for update in self.tg.get_updates(offset=self.udpate_id, timeout=10):
+            self.udpate_id = update.update_id + 1
+            if update.callback_query:
+                query = update.callback_query
+                _, l9Id = self.getTag(
+                    {
+                        'uid': query.from_user.id,
+                        'name': f'{query.from_user.first_name} {query.from_user.last_name}',
+                    }
+                )
+                key = self.classicKeyboard(query.data)
+                if query.data == 'near':
+                    query.edit_message_text(
+                        self.nearLesson(l9Id), reply_markup=key
+                    )
+
+                if query.data == 'next':
+                    query.edit_message_text(
+                        self.nextLesson(l9Id), reply_markup=key
+                    )
+
+                if query.data == 'tday':
+                    query.edit_message_text(
+                        self.dayShedule(l9Id), reply_markup=key
+                    )
+
+            if update.message:
+                self.tg.sendMessage(
+                    update.message.from_user.id,
+                    "Нажми на кнопку - получишь результат!",
+                    reply_markup=self.classicKeyboard(),
+                )
+        # Yay, it's bad, but comment this is worse
+        if True:
+            return None
         uid = msg['uid']
         text = msg['text']
         name = msg['name']
@@ -226,7 +284,6 @@ class Bot:
 
     def getTag(self, msg):
         uid = msg['uid']
-        text = msg['text']
         name = msg['name']
 
         if uid not in self.users_id:
@@ -571,18 +628,15 @@ if __name__ == "__main__":
     l9lk = L9LK(config['sql'])
     tg_db = TG_DB(l9lk)
     sh_db = Shedule_DB(l9lk)
-    bot = Bot(l9lk, sh_db)
-
-    from libraries.tg_bot import TGbot
-
-    tg_bot = TGbot(config['tg']['token'])
+    bot = Bot(config['tg']['token'], l9lk, sh_db)
 
     timer = datetime.datetime(2022, 1, 1)
 
     logger.info("Bot ready!")
 
     while True:
-        msgs = tg_bot.checkMessages()
+        msgs = bot.checkMessages()
+        """
         if isinstance(msgs, list):
             for msg in msgs:
                 logger.info("\t".join(msg.values()))
@@ -624,3 +678,4 @@ if __name__ == "__main__":
 
             # if timer.hour == 19 and timer.minute == 00:
             # bot.nextDay(tg_bot, now)
+"""
