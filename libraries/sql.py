@@ -62,18 +62,19 @@ class Database():
 							for i in values.values()]) + ");"
 		self.execute(query, commit = True)
 		
-	def get(self, name, condition, columns = None):
+	def get(self, name, condition = None, columns = None):
 		"""Get rows by simple condition
 		
 		:SELECT columns FROM name WHERE condition:
 		
 		Args:
 		    :name: :class:`str` name of the table
-		    :condition: :class:`str` SQL condition after WHERE
+		    :condition: :class:`str` SQL condition after WHERE, for all rows leave None
 		    :columns: [optional] :class:`list` columns to return, for all columns leave None
 		"""			
 		query = "SELECT " + (', '.join(columns) if columns != None else "*")
-		query += f" FROM `{name}` WHERE {condition};"
+		query += f" FROM `{name}`"
+		query += f"WHERE {condition};" if condition != None else ";"
 		result = self.execute(query).fetchall()
 		logger.info(result)
 		return result
@@ -154,7 +155,7 @@ class TG_DB():
 							 CREATE TABLE IF NOT EXISTS `{TG_DB.users_table}` (
 							 `l9Id` int NOT NULL,
 							 `tgId` bigint NOT NULL,
-							 `pos_tag` varchar(11) DEFAULT 'not_started',
+							 `pos_tag` varchar(30) DEFAULT 'not_started',
 							 `name` TEXT,
 							 PRIMARY KEY (`l9Id`),
 							 CONSTRAINT `l9_tg` FOREIGN KEY (`l9Id`) REFERENCES `{L9LK.users_table}` (`l9Id`) ON DELETE CASCADE ON UPDATE CASCADE

@@ -7,7 +7,6 @@ import re
 from time import sleep
 from itertools import groupby
 import telegram
-
 import logging
 
 logger = logging.getLogger('bot')
@@ -19,7 +18,7 @@ class Bot:
 
     group_num_format = re.compile('\d{4}')
 
-    def __init__(self, token, db, shedule):
+    def __init__(self, token: str, db: L9LK, shedule: Shedule_DB):
         self.l9lk = db
         self.users_id = {}
         self.users_db = {}
@@ -27,14 +26,36 @@ class Bot:
         self.tg = telegram.Bot(token)
         self.udpate_id = None
 
-    def classicKeyboard(self, now=""):
+    def confirmKeyboard(self) -> telegram.InlineKeyboardMarkup:
+        """Yes/no keyboard"""
+        buttons = [
+            [
+                telegram.InlineKeyboardButton("Да", callback_data="yes"),
+                telegram.InlineKeyboardButton("Нет", callback_data="no"),
+            ]
+        ]
+        return telegram.InlineKeyboardMarkup(buttons)
+
+    def cancelKeyboard(self) -> telegram.InlineKeyboardMarkup:
+        """Cancel keyboard"""
+        buttons = [
+            [telegram.InlineKeyboardButton("Отмена", callback_data="cancel")]
+        ]
+        return telegram.InlineKeyboardMarkup(buttons)
+
+    def classicKeyboard(self, now=None) -> telegram.InlineKeyboardMarkup:
+        """Create a main bot keyboard
+
+        Args:
+            :now: :class:`str` key to hide
+        """
         keys = {
             "near": "Ближайшая пара",
             "next": "Следующая пара",
             "tday": "Расписание на сегодня",
         }
 
-        if now == "":
+        if now == None:
             buttons = [
                 [
                     telegram.InlineKeyboardButton(
@@ -62,82 +83,191 @@ class Bot:
 
         return telegram.InlineKeyboardMarkup(buttons)
 
-    def checkMessages(self):
+    def mainMenu(self, query: telegram.CallbackQuery) -> None:
+        """Main menu handle (near, next and day lessons)"""
+        _, l9Id = self.getTag(query)
+        key = self.classicKeyboard(query.data)
+        if query.data == 'near':
+            answer = self.nearLesson(l9Id)
 
+        elif query.data == 'next':
+            answer = self.nextLesson(l9Id)
+
+        elif query.data == 'tday':
+            answer = self.dayShedule(l9Id)
+            
+        query.edit_message_text(answer, reply_markup=key)
+
+        query.answer()
+
+    def start(self, query: telegram.Message):
+        """New users handle"""
+        count = len(self.l9lk.db.get(L9LK.users_table, None, ['l9Id']))
+        uid = query.from_user.id
+
+        if count >= config['limit']:
+            self.tg.sendMessage(
+                uid,
+                (
+                    'Бот работает в тестовом режиме, поэтому количество пользователей временно ограничено.\n'
+                    'К сожалению, в данный момент лимит превышен, поэтому доступ для вас закрыт 😢'
+                    'Попробуйте зайти на следующей неделе, когда лимит будет повышен'
+                ),
+            )
+
+        else:
+            self.changeTag(uid, 'started')
+            self.tg.sendMessage(
+                uid,
+                (
+                    'Привет! Я твой новый помощник, который подскажет тебе, какая сейчас пара, '
+                    'и будет напоминать о занятиях, чтобы ты ничего не упустил 🤗\n'
+                    'Давай знакомиться! Введи свой номер группы (первые четыре цифры)'
+                ),
+            )
+
+    def addGroup(self, l9Id: int, query: telegram.Message):
+        """Appending group handle"""
+        groupName = query.text
+        uid = query.from_user.id
+
+        if Bot.group_num_format.match(groupName) is None:
+            self.tg.sendMessage(
+                uid,
+                '❗️Группа введена неверно',
+                reply_markup=self.cancelKeyboard(),
+            )
+
+        else:
+            result = self.l9lk.db.get(
+                Shedule_DB.groups_table,
+                f'groupNumber = {groupName}',
+                ['groupId', 'specName'],
+            )
+
+            if result != []:
+                result = result[0]
+                exists = self.l9lk.db.get(
+                    Shedule_DB.gu_table,
+                    f'l9Id = {l9Id} AND groupId = {result[0]}',
+                )
+                if exists == []:
+                    self.l9lk.db.insert(
+                        Shedule_DB.gu_table,
+                        {'l9Id': l9Id, 'groupId': result[0]},
+                    )
+                    self.changeTag(uid, 'ready')
+                    self.tg.sendMessage(
+                        uid,
+                        f'Поздравляем, твоя группа {groupName}, направление "{result[1]}", подключена!',
+                    )
+
+                else:
+                    self.tg.sendMessage(
+                        uid,
+                        '❗️Эта группа у тебя уже подключена',
+                        reply_markup=self.cancelKeyboard(),
+                    )
+
+            else:
+                group = findInRasp(groupName)
+                if group != None:
+                    group_url = f'ssau.ru/{group["url"][2:]}'
+                    gr_num = group["text"]
+                    groupId = group["id"]
+
+                    self.changeTag(uid, f'conf_{groupName}_{groupId}')
+                    self.tg.sendMessage(
+                        uid,
+                        (
+                            'Такой группы у меня пока нет в базе, но она есть на сайте\n'
+                            f'{group_url}\n'
+                            'Проверь, пожалуйста, что это твоя группа и нажми кнопку\n'
+                        ),
+                        reply_markup=self.confirmKeyboard(),
+                    )
+
+                else:
+                    self.tg.sendMessage(
+                        uid,
+                        'К сожалению, такой группы нет ни в моей базе, ни на сайте университета :(',
+                        reply_markup=self.cancelKeyboard(),
+                    )
+
+    def checkMessages(self):
+        """Check and handle new messages and action"""
         for update in self.tg.get_updates(offset=self.udpate_id, timeout=10):
             self.udpate_id = update.update_id + 1
+
             if update.callback_query:
                 query = update.callback_query
-                _, l9Id = self.getTag(
-                    {
-                        'uid': query.from_user.id,
-                        'name': f'{query.from_user.first_name} {query.from_user.last_name}',
-                    }
-                )
-                key = self.classicKeyboard(query.data)
-                if query.data == 'near':
-                    query.edit_message_text(
-                        self.nearLesson(l9Id), reply_markup=key
+                tag, l9Id = self.getTag(query)
+                if query.data == 'cancel':
+                    groups = self.l9lk.db.get(
+                        Shedule_DB.gu_table,
+                        f'l9Id = {l9Id}',
                     )
+                    had_groups = len(groups) != 0
+                    self.changeTag(
+                        query.from_user.id,
+                        'ready' if had_groups else 'started',
+                    )
+                    query.answer(
+                        'Действие отменено'
+                        if had_groups
+                        else 'Внимание, требуется ввести хотя бы одну группу!',
+                        not had_groups,
+                    )
+                    query.delete_message()
+                elif tag.find('conf') != -1:
+                    query.answer()
+                    if query.data == 'yes':
+                        query.edit_message_text('Загружаю расписание...')
 
-                if query.data == 'next':
-                    query.edit_message_text(
-                        self.nextLesson(l9Id), reply_markup=key
-                    )
+                        _, groupName, groupId = tag.split('_')
+                        now_week = datetime.datetime.now()
+                        self.loadShedule(groupId, now_week)
 
-                if query.data == 'tday':
-                    query.edit_message_text(
-                        self.dayShedule(l9Id), reply_markup=key
-                    )
+                        self.l9lk.db.insert(
+                            Shedule_DB.gu_table,
+                            {'l9Id': l9Id, 'groupId': groupId},
+                        )
+
+                        self.changeTag(query.from_user.id, 'ready')
+                        query.edit_message_text(
+                            'Поздравляю, твоя группа загружена в мою базу данных! Теперь ты можешь пользоваться всем функционалом бота, подробнее в справке /help'
+                        )
+
+                    else:
+                        query.edit_message_text(
+                            'Возможно, ты написал не ту группу, попробуй снова'
+                        )
+                        query.edit_message_reply_markup(
+                            self.cancelKeyboard()
+                        )
+                        self.changeTag(query.from_user.id, 'started')
+                else:
+                    self.mainMenu(query)
 
             if update.message:
-                self.tg.sendMessage(
-                    update.message.from_user.id,
-                    "Нажми на кнопку - получишь результат!",
-                    reply_markup=self.classicKeyboard(),
-                )
+                query = update.message
+                tag, l9Id = self.getTag(query)
+                uid = query.from_user.id
+                if tag == 'not_started':
+                    self.start(query)
+
+                elif tag == 'started':
+                    self.addGroup(l9Id, query)
+
+                else:
+                    self.tg.sendMessage(
+                        uid,
+                        "Нажми на кнопку - получишь результат!",
+                        reply_markup=self.classicKeyboard(),
+                    )
         # Yay, it's bad, but comment this is worse
         if True:
             return None
-        uid = msg['uid']
-        text = msg['text']
-        name = msg['name']
-
-        tag, l9Id = self.getTag(msg)
-
-        if tag == 'not_started':
-            count = len(
-                self.l9lk.db.get(L9LK.users_table, f'l9Id != 0', ['l9Id'])
-            )
-
-            if count >= config['limit']:
-                return [
-                    'Бот работает в тестовом режиме, поэтому количество пользователей временно ограничено.\n'
-                    'К сожалению, в данный момент лимит превышен, поэтому доступ для вас закрыт. '
-                    'Попробуйте зайти на следующей неделе, когда лимит будет повышен'
-                ]
-
-            if text != '/start':
-                return ['Нажми /start, чтобы начать']
-            else:
-                self.changeTag(uid, 'started')
-                return [
-                    'Приветствую тебя!',
-                    'Я буду напоминать тебе о ближайших парах!',
-                    '❗️ Внимание! Бот работает в тестовом режиме, поэтому возможны сбои в работе\n'
-                    'Если бот не отвечает на запросы, не пишите ему больше ничего: автор заметит '
-                    'и как можно скорее исправит ошибку, и бот обязательно вам ответит :)',
-                    'Для начала определимся, откуда ты\n'
-                    'Введи свой номер группы в краткой форме (например, 2305)',
-                ]
-
-        elif tag == 'started':
-            ans = self.addGroup(l9Id, text)
-            if ans[0].find("!") != -1:
-                self.changeTag(uid, 'ready')
-            elif ans[0].find("ssau") != -1:
-                self.changeTag(uid, f'conf_{text}')
-            return ans
 
         elif tag == 'ready':
             if text == 'Ближайшая пара':
@@ -219,24 +349,6 @@ class Bot:
             self.changeTag(uid, 'ready')
             return ['Возврат в главное меню']
 
-        elif tag.find('conf') != -1:
-            if text == '✅ Да':
-                groupName = tag[-4:]
-                now_week = datetime.datetime.now()
-                groupId = findInRasp(groupName)['id']
-                self.loadShedule(groupId, now_week)
-
-                self.l9lk.db.insert(
-                    Shedule_DB.gu_table, {'l9Id': l9Id, 'groupId': groupId}
-                )
-
-                self.changeTag(uid, 'ready')
-                return [
-                    'Поздравляю, твоя группа загружена в мою базу данных! Теперь ты можешь пользоваться всем функционалом бота, подробнее в справке /help'
-                ]
-            else:
-                ['Ой, возможно, произошла какая-то ошибка :(']
-
         elif tag == 'first_time':
             ans = self.changeFirstTime(l9Id, text)
             if ans.find("!") != -1:
@@ -282,9 +394,9 @@ class Bot:
         for l in lessons:
             self.l9lk.db.insert(Shedule_DB.lessons_table, l)
 
-    def getTag(self, msg):
-        uid = msg['uid']
-        name = msg['name']
+    def getTag(self, query):
+        uid = query.from_user.id
+        name = f'{query.from_user.first_name} {query.from_user.last_name}'
 
         if uid not in self.users_id:
             l9Id = tg_db.initUser(uid, name)
@@ -316,52 +428,6 @@ class Bot:
                 return "Время установлено!"
         except ValueError:
             return "Ой, это не похоже на число ):\nНапоминаю, что тебе нужно ввести время сообщения о начале пар"
-
-    def addGroup(self, l9Id, groupName):
-        if Bot.group_num_format.match(groupName) is None:
-            return [
-                '❗️Группа введена неверно. Введи /cancel для отмены действия'
-            ]
-        else:
-            result = self.l9lk.db.get(
-                Shedule_DB.groups_table,
-                f'groupNumber = {groupName}',
-                ['groupId', 'specName'],
-            )
-
-            if result != []:
-                result = result[0]
-                exists = self.l9lk.db.get(
-                    Shedule_DB.gu_table,
-                    f'l9Id = {l9Id} AND groupId = {result[0]}',
-                )
-                if exists == []:
-                    self.l9lk.db.insert(
-                        Shedule_DB.gu_table,
-                        {'l9Id': l9Id, 'groupId': result[0]},
-                    )
-                    return [
-                        f'Поздравляем, твоя группа {groupName}, направление "{result[1]}", подключена!'
-                    ]
-                else:
-                    return ['❗️Эта группа уже подключена']
-            else:
-                group = findInRasp(groupName)
-                if group != None:
-                    group_url = f'ssau.ru/{group["url"][2:]}'
-                    gr_num = group["text"]
-                    groupId = group["id"]
-
-                    return [
-                        'Такой группы у меня пока нет в базе, но она есть на сайте\n'
-                        + f'{group_url}\n'
-                        + 'Проверь, пожалуйста, что это твоя группа и нажми кнопку\n'
-                        + '(после нажатия кнопки начнётся загрузка расписания, которое займёт не более пары минут)'
-                    ]
-                else:
-                    return [
-                        'К сожалению, такой группы нет ни в моей базе, ни на сайте университета :('
-                    ]
 
     def delGroup(self, l9Id, groupName):
         if Bot.group_num_format.match(groupName) is None:
@@ -510,7 +576,7 @@ class Bot:
             text += f"\n{l['type']} {l['name']}{place}{teacher}{add_info}\n"
         return text
 
-    def changeTag(self, uid, tag):
+    def changeTag(self, uid: int, tag: str) -> None:
         self.l9lk.db.update(
             TG_DB.users_table, f"tgId = {uid}", f"pos_tag = '{tag}'"
         )
