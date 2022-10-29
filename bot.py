@@ -66,7 +66,7 @@ class Bot():
 			elif text == 'Расписание на сегодня':
 				return[self.dayShedule(l9Id)]
 			elif text[0] == '/':
-				text = text.split()
+				text = text.split(" ")
 				cmd = text[0]
 				arg = text[1:] if len(text) > 1 else None
 				if cmd == '/help':
@@ -86,7 +86,7 @@ class Bot():
 							self.changeTag(uid, 'add', platform)
 							return ["Введи номер новой группы в краткой форме (например, 2305)"]
 						else:
-							return [self.addGroup(l9Id, arg[0])]
+							return self.addGroup(l9Id, arg[0])
 						
 				if cmd == '/del':
 					groups_count = len(self.l9lk.db.get(Shedule_DB.gu_table, f'l9Id = {l9Id}'))
@@ -159,7 +159,7 @@ class Bot():
 	def loadShedule(self, groupId, date):
 		week = date.isocalendar()[1] - first_week
 		
-		self.l9lk.db.execute(f'DELETE FROM {Shedule_DB.lessons_table} WHERE WEEK(`begin`, 1) = {date.isocalendar()[1]};')
+		self.l9lk.db.execute(f'DELETE FROM {Shedule_DB.lessons_table} WHERE WEEK(`begin`, 1) = {date.isocalendar()[1]} AND groupId = {groupId};')
 		
 		t_info = self.l9lk.db.get(Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
 		t_info = [dict(zip(teacher_columns, i)) for i in t_info]				
@@ -212,7 +212,7 @@ class Bot():
 		
 	def addGroup(self, l9Id, groupName):
 		if Bot.group_num_format.match(groupName) is None:
-			return ['❗️Группа введена неверно']
+			return ['❗️Группа введена неверно. Введи /cancel для отмены действия']
 		else:
 			result = self.l9lk.db.get(
 						Shedule_DB.groups_table,
@@ -222,7 +222,7 @@ class Bot():
 	
 			if result != []:
 				result = result[0]
-				exists = self.l9lk.db.get(Shedule_DB.gu_table, f'groupId = {result[0]}')
+				exists = self.l9lk.db.get(Shedule_DB.gu_table, f'l9Id = {l9Id} AND groupId = {result[0]}')
 				if exists == []:
 					self.l9lk.db.insert(
 								Shedule_DB.gu_table,
@@ -260,6 +260,13 @@ class Bot():
 		
 	def nearLesson(self, l9Id, retry = 0):
 		now = datetime.datetime.now()
+		groupIds = self.shedule.getGroup(l9Id)
+		if groupIds != None:
+			for groupId in groupIds:
+				lessonIds, _ = self.shedule.nearLesson(l9Id, now, [groupId])
+				if groupId[0] > 1000 and (lessonIds == None or lessonIds == []):
+					self.loadShedule(groupId[0], now + datetime.timedelta(days = 7))
+						
 		lessonId, date = self.shedule.nearLesson(l9Id, now)
 		if lessonId != None:
 			lessons = [self.shedule.getLesson(i) for i in lessonId]
@@ -279,13 +286,15 @@ class Bot():
 			text += self.strLesson(lessons)
 			
 		elif retry < 2:
-			groupIds = self.shedule.getGroup(l9Id)
-			for groupId in groupIds:
-				now += datetime.timedelta(days = 7 * retry)
-				self.loadShedule(groupId[0], now)
-				return self.nearLesson(l9Id, retry+1)
+			
+			if groupIds != None:
+				for groupId in groupIds:
+					if groupId[0] > 1000:
+						now += datetime.timedelta(days = 7 * retry)
+						self.loadShedule(groupId[0], now)
+			return self.nearLesson(l9Id, retry+1)
 		else:
-			text = 'Ой! Занятий не обнаружено!'
+			text = 'Ой! Занятий не обнаружено!\nВозможно, ты не подключен ни к одной группе. Напиши /add, чтобы подключить новую'
 
 		return text
 	
@@ -315,6 +324,15 @@ class Bot():
 	
 	def dayShedule(self, l9Id, retry = 0):
 		now = datetime.datetime.now()
+		
+		groupIds = self.shedule.getGroup(l9Id)
+		
+		if groupIds != None:
+			for groupId in groupIds:
+				lessonIds, _ = self.shedule.getDay(l9Id, now, [groupId])
+				if groupId[0] > 1000 and (lessonIds == None or lessonIds == []):
+					self.loadShedule(groupId[0], now + datetime.timedelta(days = 7))
+		
 		lessonIds, date = self.shedule.getDay(l9Id, now)
 		
 		if lessonIds != None:
@@ -331,12 +349,14 @@ class Bot():
 			
 		elif retry < 2:
 			groupIds = self.shedule.getGroup(l9Id)
-			for groupId in groupIds:
-				now += datetime.timedelta(days = 7 * retry)
-				self.loadShedule(groupId[0], now)
-				return self.dayShedule(l9Id, retry+1)
+			if groupIds != None:
+				for groupId in groupIds:
+					if groupId[0] > 1000:
+						now += datetime.timedelta(days = 7 * retry)
+						self.loadShedule(groupId[0], now)
+			return self.dayShedule(l9Id, retry+1)
 		else:
-			text = 'Ой! Занятий не обнаружено!'
+			text = 'Ой! Занятий не обнаружено!\nВозможно, ты не подключен ни к одной группе. Напиши /add, чтобы подключить новую'
 
 		return text
 	
@@ -348,7 +368,8 @@ class Bot():
 		for l in lesson:
 			add_info = "" if l['add_info'] == None else "\n"+l['add_info']
 			teacher = "" if l['teacher'] == None else "\n👤 "+l['teacher']
-			text += f"\n{l['type']} {l['name']}\n🧭 {l['place']}{teacher}{add_info}\n"			
+			place = "" if l['place'] == None else f"\n🧭 {l['place']}"
+			text += f"\n{l['type']} {l['name']}{place}{teacher}{add_info}\n"			
 		return text
 				
 	def changeTag(self, uid, tag, platform = "TG"):
@@ -360,6 +381,13 @@ class Bot():
 			)	
 		
 	def checkLesson(self, time):
+		groupIds = self.l9lk.db.get(Shedule_DB.groups_table, 'groupId > 1000', ['groupId'])
+		if groupIds != None:
+			for groupId in groupIds:
+				lessonIds, _ = self.shedule.nearLesson(None, now, [groupId])
+				if lessonIds == None or lessonIds == []:
+					self.loadShedule(groupId[0], now + datetime.timedelta(days = 7))
+					
 		lessons, first_lessons = self.shedule.checkLesson(time)
 		last_lessons = self.shedule.lastLesson(time)
 		
@@ -376,7 +404,7 @@ class Bot():
 			text += self.strLesson(lesson)
 			mailing[groupId] = text
 			
-		for groupId, lesson in last_lessons:
+		for groupId in last_lessons:
 			text = "❗️ Сегодня пар больше нет\n"	
 			next_day[groupId] = text
 			
@@ -403,6 +431,9 @@ class Bot():
 							['tgId'])
 				if tg_id != []:
 					bot.sendMessage(tg_id[0][0], msg, tg_bot.keyboard())
+					
+	def indMailing(self, bot, tgId):
+		pass
 					
 	def firstMailing(self, bot, time):
 		self.shedule.firstTimeCheck(time)
@@ -494,7 +525,7 @@ if __name__ == "__main__":
 		if now - timer > datetime.timedelta(minutes=5):
 			timer = now.replace(minute=now.minute//5*5, second=0, microsecond=0)
 			logger.debug("check "+now.isoformat())
-			#timer = datetime.datetime(2022,10,19,7,15)
+			#timer = datetime.datetime(2022,10,24,9,35)
 			bot.firstMailing(tg_bot, timer)
 			
 			mail = bot.checkLesson(timer)

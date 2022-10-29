@@ -12,6 +12,7 @@ class TGbot():
 		try:
 			for update in self.bot.get_updates(offset=self.udpate_id, timeout=10):
 				self.udpate_id = update.update_id + 1
+				#print(self.udpate_id)
 			
 				if update.message:
 					msg = {

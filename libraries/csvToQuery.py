@@ -67,5 +67,5 @@ if __name__ == "__main__":
 	for t in teachers:
 		l9lk.db.insert(sql.Shedule_DB.teachers_table, t)
 		
-	for l in lessons:
-		l9lk.db.insert(sql.Shedule_DB.lessons_table, l)
+	#for l in lessons:
+		#l9lk.db.insert(sql.Shedule_DB.lessons_table, l)
