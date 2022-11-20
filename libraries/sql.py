@@ -207,6 +207,9 @@ class Shedule_DB():
 		`guId` int NOT NULL AUTO_INCREMENT,
 		`l9Id` int NOT NULL,
 		`groupId` bigint NOT NULL,
+		`firstTime` int DEFAULT '45',
+		`firstNote` tinyint DEFAULT '1',
+		`nextNote` tinyint DEFAULT '1',
 		PRIMARY KEY (`guId`),
 		KEY `guid_idx` (`l9Id`),
 		KEY `gid_idx` (`groupId`),
@@ -406,9 +409,9 @@ class Shedule_DB():
 		
 		query = f"""#
 		INSERT IGNORE INTO first_mail (l9Id, lessonId, mailTime) 
-		SELECT u.l9Id, l.lessonId, DATE_SUB(l.begin, INTERVAL u.first_time MINUTE) as `time` FROM groups_users AS g 
+		SELECT u.l9Id, l.lessonId, DATE_SUB(l.begin, INTERVAL g.firstTime MINUTE) as `time` FROM groups_users AS g 
 		JOIN l9_users AS u ON u.l9Id = g.l9Id
-		JOIN lessons AS l ON l.groupId = g.groupId WHERE DATE(l.begin) = '{str_data}' AND l.numInDay = 1 AND l.begin > '{str_time}' ORDER BY l.begin;"""
+		JOIN lessons AS l ON l.groupId = g.groupId WHERE DATE(l.begin) = '{str_data}' AND l.numInDay = 1 AND l.begin > '{str_time}' AND g.firstNote = 1 ORDER BY l.begin;"""
 		
 		self.l9lk.db.execute(query, commit=True)
 		
