@@ -10,12 +10,16 @@ logger = logging.getLogger('bot')
 def findInRasp(req):
 	logger.debug(f'Find {req}')
 	rasp = requests.Session() 
+	rasp.headers['User-Agent'] = 'Mozilla/5.0'
 	hed = rasp.get("https://ssau.ru/rasp/")
 	soup = BeautifulSoup(hed.text, 'lxml')
 	csrf_token = soup.select_one('meta[name="csrf-token"]')['content']
+	csrf_token2 = soup.select_one('meta[name="csrf-token-value"]')['content']
 	time.sleep(1)
 	rasp.headers['Accept'] = 'application/json'
 	rasp.headers['X-CSRF-TOKEN'] = csrf_token
+	rasp.headers['X-csrftoken'] = csrf_token2
+	
 	result = rasp.post("https://ssau.ru/rasp/search", data = {'text':req})
 	if result.status_code == 200:
 		num = literal_eval(result.text)
@@ -29,12 +33,14 @@ def findInRasp(req):
 	
 def connect(groupId, week, reconnects = 0):
 	logger.debug(f'Connecting to sasau, groupId = {groupId}, week N {week}, attempt {reconnects}')
-	site = requests.get(f'https://ssau.ru/rasp?groupId={groupId}&selectedWeek={week}')
+	rasp = requests.Session() 
+	rasp.headers['User-Agent'] = 'Mozilla/5.0'
+	site = rasp.get(f'https://ssau.ru/rasp?groupId={groupId}&selectedWeek={week}')
 	if site.status_code == 200:
 		contents = site.text.replace("\n", " ")	
 		soup = BeautifulSoup(contents, 'html.parser')
 		return soup
-	elif reconnects < 10:
+	elif reconnects < 5:
 		time.sleep(2)
 		return connect(groupId, week, reconnects+1)
 	else:
@@ -148,22 +154,70 @@ def parseWeek(groupId, week, teachers = []):
 			new_shedule.append(l)	
 	return new_shedule, teachers
 
+session_types = {
+	" Консультация":"cons",
+	" Экзамен":"exam"
+}
+
+def getSession(groupId, reconnects=0):
+	logger.debug(f'Connecting to sasau session, groupId = {groupId}, attempt {reconnects}')
+	rasp = requests.Session() 
+	rasp.headers['User-Agent'] = 'Mozilla/5.0'	
+	site = rasp.get(f'https://ssau.ru/rasp/session?groupId={groupId}')
+
+	if site.status_code == 200:
+		contents = site.text.replace("\n", " ")	
+		soup = BeautifulSoup(contents, 'html.parser')
+		session_soup = soup.find_all("div", {"class": "daily-session"})    
+		exams = []
+		for s in session_soup:
+			exam = {}
+			date_text = s.find("div", {"class": "daily-session__date", "class": "h3-text"}).text
+			time_text = s.find("div", {"class": "meeting__time"}).text
+			dt = date_text + time_text
+			date = datetime.datetime.strptime(dt,' %d.%m.%Y %H:%M')
+	
+			exam["groupId"] = groupId
+			exam["date"] = date
+			exam["type"] = session_types[s.find("div", {"class": "meeting__type"}).text]
+			exam["subject"] = s.find("div", {"class": "meeting__discipline"}).text
+			
+			teacherId = s.find("a", {"class": "meeting__link"})['href']
+			tId = teacherId.find("=")
+			exam["teacherId"] = int(teacherId[tId+1:])
+			exam["place"] = s.find("div", {"class": "meeting__place"}).text
+			exams.append(exam)	
+			
+		return exams
+
+	elif reconnects < 5:
+		time.sleep(2)
+		return connect(groupId, reconnects+1)
+	else:
+		raise 'Connection to sasau session failed!'	
+
+	
+
 if __name__ == "__main__":	
 	import sql
 	l9lk = sql.L9LK(open("pass.txt").read())
 	sh = sql.Shedule_DB(l9lk)
 	
-	#t = findInRasp('2107')
+	#r = connect(530994039,15)
 	
-	t_info = l9lk.db.get(sql.Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
-	t_info = [dict(zip(teacher_columns, i)) for i in t_info]
-	lessons, teachers = parseWeek(530996164, 2, t_info)	
+	t = getSession(530996168)
+	for s in t:
+		l9lk.db.insert(sql.Shedule_DB.s_table, s)
+	
+	#t_info = l9lk.db.get(sql.Shedule_DB.teachers_table, 'teacherId!=0', teacher_columns)
+	#t_info = [dict(zip(teacher_columns, i)) for i in t_info]
+	#lessons, teachers = parseWeek(530996164, 2, t_info)	
 	
 	#g = getGroupInfo(530996164)
 	#l9lk.db.insert(sql.Shedule_DB.groups_table, g)
 	
-	for t in teachers:
-		l9lk.db.insert(sql.Shedule_DB.teachers_table, t)	
+	#for t in teachers:
+		#l9lk.db.insert(sql.Shedule_DB.teachers_table, t)	
 		
 	#for l in lessons:	
 		#l9lk.db.insert(sql.Shedule_DB.lessons_table, l)

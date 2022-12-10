@@ -24,7 +24,7 @@ class Database():
 		Returns:
 		    :cursor: result of query
 		"""
-		if query.lower().find("drop") == -1 and query.lower().find("truncate") == -1:
+		if query.lower().find("drop") == -1:
 			if query.lower().find('create') == -1:
 				logger.info(query)
 			self.cursor.execute(query)
@@ -74,7 +74,7 @@ class Database():
 		"""			
 		query = "SELECT " + (', '.join(columns) if columns != None else "*")
 		query += f" FROM `{name}`"
-		query += f"WHERE {condition};" if condition != None else ";"
+		query += f" WHERE {condition};" if condition != None else ";"
 		result = self.execute(query).fetchall()
 		logger.info(result)
 		return result
@@ -143,6 +143,7 @@ class L9LK():
 class TG_DB():
 	
 	users_table = "tg_bot"
+	msg_table = "temp_msg"
 	
 	def __init__(self, db):	
 		"""Telegram Bot Databse
@@ -161,6 +162,16 @@ class TG_DB():
 							 CONSTRAINT `l9_tg` FOREIGN KEY (`l9Id`) REFERENCES `{L9LK.users_table}` (`l9Id`) ON DELETE CASCADE ON UPDATE CASCADE
 							 )""",
 							 commit=True)	
+		
+		self.l9lk.db.execute(f"""
+								 CREATE TABLE IF NOT EXISTS `{TG_DB.msg_table}` (
+								 `msgId` bigint NOT NULL AUTO_INCREMENT,
+								 `chatId` bigint NOT NULL,
+								 `messageId` bigint NOT NULL,
+								 `msgDate` datetime NOT NULL,
+								 `msgType` varchar(5),
+								 PRIMARY KEY (`msgId`))""",
+								 commit=True)		
 		
 	def initUser(self, tgId, name):
 		result = self.l9lk.db.get(TG_DB.users_table, f"tgId = {tgId}", ["l9Id"])
@@ -184,6 +195,7 @@ class Shedule_DB():
 	lessons_table = 'lessons'
 	fm_table = 'first_mail'
 	gu_table = 'groups_users'
+	s_table = 'session'
 
 	def __init__(self, db):	
 		"""Shedule Databse
@@ -260,7 +272,23 @@ class Shedule_DB():
 		CONSTRAINT `l9_fm` FOREIGN KEY (`l9Id`) REFERENCES `{L9LK.users_table}` (`l9Id`),
 		CONSTRAINT `lesson_fm` FOREIGN KEY (`lessonId`) REFERENCES `lessons` (`lessonId`) ON DELETE CASCADE ON UPDATE CASCADE
 		)""",
-		commit=True)				
+		commit=True)	
+		
+		self.l9lk.db.execute(f"""
+		CREATE TABLE IF NOT EXISTS `{Shedule_DB.s_table}` (
+		`sessionId` int NOT NULL AUTO_INCREMENT,
+		`type` char(5) DEFAULT 'exam',
+		`subject` text,
+		`groupId` bigint NOT NULL,
+		`date` datetime NOT NULL,
+		`teacherId` bigint DEFAULT NULL,
+		`place` text,
+		`add_info` text,
+		PRIMARY KEY (`sessionId`),
+		KEY `gr_s_idx` (`groupId`),
+		KEY `teach_s_idx` (`teacherId`)
+		)""",
+		commit=True)		
 		
 	def nearLesson(self, l9Id, time, groupId = None):
 		print(groupId)

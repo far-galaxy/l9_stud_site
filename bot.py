@@ -25,6 +25,7 @@ class Bot:
         self.shedule = shedule
         self.tg = telegram.Bot(token)
         self.udpate_id = None
+        self.isWork = True
         
     def answer(self, query: telegram.CallbackQuery, text=None, alert=False):
         try:
@@ -73,7 +74,7 @@ class Bot:
         keys = {
             "near": "Ближайшая пара",
             "next": "Следующая пара",
-            "tday": "Расписание на сегодня",
+            "tday": "Расписание на день",
         }
 
         if now == None or now == 'opts':
@@ -369,9 +370,9 @@ class Bot:
 
     def checkMessages(self):
         """Check and handle new messages and action"""
-        for update in self.tg.get_updates(offset=self.udpate_id, timeout=10):
+        updates = self.tg.get_updates(offset=self.udpate_id, timeout=5)
+        for update in updates:
             self.udpate_id = update.update_id + 1
-            
             try:
                 if update.callback_query:
                     query = update.callback_query
@@ -426,10 +427,37 @@ class Bot:
                             'Действие отменено'
                             if had_groups
                             else 'Внимание, требуется ввести хотя бы одну группу!',
-                            reply_markup=self.menuKeyboard()
+                            reply_markup=self.menuKeyboard() if had_groups else None
                         )
                         continue
+                    
+                    if query.text == "/help":
+                        self.tg.sendMessage(uid,
+                        open('libraries/help.txt', encoding='utf-8').read(),
+                        reply_markup=self.menuKeyboard())
+                    
+                    if str(uid) == config["tg"]["admin"]:
+                        if query.text == "/stop":
+                            self.isWork = False
+                            self.cleanMessages()
+                            try:
+                                query.delete()
+                            except:
+                                pass
+                            self.tg.sendMessage(uid, 'Бот остановлен')                  
+                            logger.info("Bot stopped by admin")
+                            self.tg.get_updates(offset=self.udpate_id, timeout=1)
+                            continue
                         
+                        if query.text[:7] == "/scream":
+                            users = self.l9lk.db.get(
+                                TG_DB.users_table, columns=['tgId']
+                            )
+                            for user in users:
+                                self.tg.sendMessage(user[0], query.text[8:])
+                            self.tg.sendMessage(uid, 'Сообщения отправлены')   
+                            continue
+                            
                     if tag == 'not_started':
                         self.start(query)
     
@@ -440,45 +468,21 @@ class Bot:
                         gr = tag.split('_')[1]
                         self.changeFirstTime(l9Id, gr, query)                       
     
-                    else:
+                    elif tag == 'ready' and query.text == 'Главное меню':
                         self.tg.sendMessage(
                             uid,
                             "Нажми на кнопку - получишь результат!",
                             reply_markup=self.classicKeyboard(),
                         )
+                        
+                    else:
+                        self.tg.sendMessage(
+                            uid,
+                            "Ой!",
+                            reply_markup=self.menuKeyboard(),
+                        )                        
             except telegram.error.BadRequest as e:
                 logger.warning(e)
-        # Yay, it's bad, but comment this is worse
-        if True:
-            return None
-
-        elif tag == 'ready':
-            if text[0] == '/':
-                text = text.split(" ")
-                cmd = text[0]
-                arg = text[1:] if len(text) > 1 else None
-                if cmd == '/help':
-                    return [
-                        open('libraries/help.txt', encoding='utf-8').read()
-                    ]
-
-                if str(uid) == config["tg"]["admin"]:
-                    if cmd == "/mail":
-                        self.groupMailing(tg_bot, arg[0], " ".join(arg[1:]))
-                        return [f"Сообщения отправлены {arg[0]}"]
-
-                    if cmd == "/scream":
-                        users = self.l9lk.db.get(
-                            TG_DB.users_table, 'tgId != 0', ['tgId']
-                        )
-                        for user in users:
-                            tg_bot.sendMessage(user[0], " ".join(arg))
-                        return ["Сообщения отправлены"]
-
-            return ['Aй!']
-
-        else:
-            return ['Ой!']
 
     def loadShedule(self, groupId, date):
         week = date.isocalendar()[1] - first_week
@@ -547,7 +551,7 @@ class Bot:
                 self.tg.sendMessage(
                         uid,
                         "Время установлено!",
-                        reply_markup=self.classicKeyboard()
+                        reply_markup=self.menuKeyboard()
                 )
         except ValueError:
             self.tg.sendMessage(
@@ -614,7 +618,7 @@ class Bot:
                         self.loadShedule(groupId[0], now)
             return self.nearLesson(l9Id, retry + 1)
         else:
-            text = 'Ой! Занятий не обнаружено!\nВозможно, ты не подключен ни к одной группе. Напиши /add, чтобы подключить новую'
+            text = 'Ой! Занятий не обнаружено!\nВозможно, ты не подключен ни к одной группе.'
 
         return text
 
@@ -714,10 +718,13 @@ class Bot:
         )
         if groupIds != None:
             for groupId in groupIds:
-                lessonIds, _ = self.shedule.nearLesson(None, now, [groupId])
+                lessonIds, _ = self.shedule.nearLesson(None, time, [groupId])
                 if lessonIds == None or lessonIds == []:
                     self.loadShedule(
-                        groupId[0], now + datetime.timedelta(days=7)
+                        groupId[0], time
+                    )                    
+                    self.loadShedule(
+                        groupId[0], time + datetime.timedelta(days=7)
                     )
 
         lessons, first_lessons = self.shedule.checkLesson(time)
@@ -752,6 +759,34 @@ class Bot:
 
         return mailing
 
+    def addForClean(self, message: telegram.Message):
+        """Added message to list for cleaning"""
+        self.l9lk.db.insert(
+            TG_DB.msg_table,
+            {
+                "chatId": message.chat_id,
+                "messageId": message.message_id,
+                "msgDate": message.date,
+            },
+        )
+    def cleanMessages(self, time = datetime.datetime(3000,1,1)):
+        str_date = time.strftime("%Y-%m-%d")
+        del_msgs = self.l9lk.db.get(
+            TG_DB.msg_table,
+            f'date(msgDate) < "{str_date}"',
+            ['chatId', 'messageId','msgId']
+        )
+        for i in del_msgs:
+            try:
+                self.tg.deleteMessage(*i[:-1]) 
+            except:
+                pass
+            finally:
+                self.l9lk.db.execute(
+                    f"DELETE FROM {TG_DB.msg_table} WHERE msgId = {i[-1]}", 
+                    commit=True
+                )                
+            
     def groupMailing(self, groupId, msg):
         group = self.l9lk.db.get(
             Shedule_DB.gu_table, f'groupId = {groupId} AND nextNote = 1', ['l9Id']
@@ -762,7 +797,8 @@ class Bot:
                     TG_DB.users_table, f'l9Id = {user[0]}', ['tgId']
                 )
                 if tg_id != []:
-                    self.tg.sendMessage(tg_id[0][0], msg)
+                    m = self.tg.sendMessage(tg_id[0][0], msg)
+                    self.addForClean(m)
 
     def firstMailing(self, time):
         self.shedule.firstTimeCheck(time)
@@ -796,7 +832,8 @@ class Bot:
                 text += self.strLesson(
                     [self.shedule.getLesson(a[1]) for a in user]
                 )
-                self.tg.sendMessage(user[0][0], text)
+                m = self.tg.sendMessage(user[0][0], text)
+                self.addForClean(m)
 
     def nextDay(self, time):
         lessons = self.shedule.checkNextDay(time)
@@ -821,50 +858,29 @@ if __name__ == "__main__":
     bot = Bot(config['tg']['token'], l9lk, sh_db)
 
     timer = datetime.datetime(2022, 1, 1)
+    del_msgs = []
 
     logger.info("Bot ready!")
 
-    while True:
-        msgs = bot.checkMessages()
-        """
-        if isinstance(msgs, list):
-            for msg in msgs:
-                logger.info("\t".join(msg.values()))
-                answer = bot.checkMessage(msg)
-                tag, _ = bot.getTag(msg)
-
-                if tag == 'ready':
-                    key = tg_bot.keyboard()
-                elif tag.find('conf') != -1:
-                    key = tg_bot.confirmKeyboard()
-                else:
-                    key = None
-                if isinstance(answer, list):
-                    for i in answer:
-                        tg_bot.sendMessage(msg['uid'], i, key)
-
-                elif isinstance(answer, Exception):
-                    logger.error(answer, exc_info=True)
-                else:
-                    logger.warning(answer)
-
-        else:
-            if isinstance(msgs, str) and msgs == "Flood Stop":
-                sleep(5)
-            logger.error(msgs, exc_info=True)
-"""
-        now = datetime.datetime.now()
-        if now - timer > datetime.timedelta(minutes=5):
-            timer = now.replace(
-                minute=now.minute // 5 * 5, second=0, microsecond=0
-            )
-            logger.debug("check " + now.isoformat())
-            # timer = datetime.datetime(2022,10,24,9,35)
-            bot.firstMailing(timer)
-
-            mail = bot.checkLesson(timer)
-            for groupId, msg in mail.items():
-                bot.groupMailing(groupId, msg)
-
-            # if timer.hour == 19 and timer.minute == 00:
-            # bot.nextDay(tg_bot, now)
+    while bot.isWork:
+        try:
+            now = datetime.datetime.now()
+            if now - timer > datetime.timedelta(minutes=5):
+                timer = now.replace(
+                    minute=now.minute // 5 * 5, second=0, microsecond=0
+                )
+                #logger.debug("check " + now.isoformat())
+                #timer = timer - datetime.timedelta(days=3)
+                #timer = datetime.datetime(2022,12,11,7,50)
+                bot.firstMailing(timer)
+    
+                mail = bot.checkLesson(timer)
+                for groupId, msg in mail.items():
+                    bot.groupMailing(groupId, msg)
+                    
+                bot.cleanMessages(timer)
+                    
+            msgs = bot.checkMessages()
+                    
+        except:
+            pass
